@@ -77,98 +77,39 @@ async function connectWallet() {
 }
 
 // Oyun oluştur
-async function createGame() {
-    if (!signer) {
-        const connected = await connectWallet();
-        if (!connected) return;
-    }
-    
+async function createGame(move, stake) {
     try {
-        const move = document.getElementById('move-select').value;
-        const stakeEth = document.getElementById('stake-amount').value;
-        const stakeWei = ethToWei(stakeEth);
+        const signer = provider.getSigner();
+        const contract = new ethers.Contract(contractAddress, contractABI, signer);
         
-        // Salt değeri oluştur
-        const salt = generateRandomSalt();
+        // Direkt olarak hamleyi gönder
+        const tx = await contract.createGame(move, {
+            value: ethers.utils.parseEther(stake.toString())
+        });
         
-        // Commitment oluştur
-        const commitment = await createCommitment(move, salt);
-        
-        // Oyun oluşturma verilerini sakla
-        gameCreationData[commitment] = {
-            move: move,
-            salt: salt,
-            stake: stakeEth
-        };
-        
-        // LocalStorage'a kaydet
-        saveToLocalStorage('gameCreationData', gameCreationData);
-        
-        // Kontrat çağrısı
-        const tx = await contract.createGame(commitment, salt, { value: stakeWei });
-        
-        showResult('create-result', "Oyun oluşturuluyor... İşlem hash: " + tx.hash);
-        
-        // İşlem onayını bekle
-        const receipt = await tx.wait();
-        
-        // Oyun ID'sini bul
-        const gameCreatedEvent = receipt.events.find(e => e.event === 'GameCreated');
-        if (gameCreatedEvent) {
-            const gameId = gameCreatedEvent.args.gameId.toString();
-            showResult('create-result', `Oyun başarıyla oluşturuldu! Oyun ID: ${gameId}`);
-            
-            // Oyun bilgilerini göster
-            const gameInfo = `
-                <div class="game-details">
-                    <p><strong>Oyun ID:</strong> ${gameId}</p>
-                    <p><strong>Hamle:</strong> ${moveToString(move)}</p>
-                    <p><strong>Bahis:</strong> ${stakeEth} ETH</p>
-                    <p><strong>Salt:</strong> ${salt}</p>
-                    <p><strong>Commitment:</strong> ${commitment}</p>
-                    <p><em>Bu bilgileri kaydedin! Özellikle salt değeri önemlidir.</em></p>
-                </div>
-            `;
-            
-            document.getElementById('create-result').innerHTML += gameInfo;
-            
-            // Oyunları yenile
-            loadGames();
-        }
+        await tx.wait();
+        console.log("Oyun başarıyla oluşturuldu!");
+        updateGameList();
     } catch (error) {
         console.error("Oyun oluşturma hatası:", error);
-        showResult('create-result', "Oyun oluşturma hatası: " + error.message, false);
     }
 }
 
 // Oyuna katıl
-async function joinGame() {
-    if (!signer) {
-        const connected = await connectWallet();
-        if (!connected) return;
-    }
-    
+async function joinGame(gameId, move, stake) {
     try {
-        const gameId = document.getElementById('game-id').value;
-        const move = document.getElementById('join-move').value;
-        const stakeEth = document.getElementById('join-stake').value;
-        const stakeWei = ethToWei(stakeEth);
+        const signer = provider.getSigner();
+        const contract = new ethers.Contract(contractAddress, contractABI, signer);
         
-        // Kontrat çağrısı
-        const tx = await contract.joinGame(gameId, move, { value: stakeWei });
+        const tx = await contract.joinGame(gameId, move, {
+            value: ethers.utils.parseEther(stake.toString())
+        });
         
-        showResult('join-result', "Oyuna katılınıyor... İşlem hash: " + tx.hash);
-        
-        // İşlem onayını bekle
-        const receipt = await tx.wait();
-        
-        showResult('join-result', "Oyuna başarıyla katıldınız!");
-        
-        // Oyunları yenile
-        loadGames();
+        await tx.wait();
+        console.log("Oyuna başarıyla katıldınız!");
+        updateGameList();
     } catch (error) {
         console.error("Oyuna katılma hatası:", error);
-        showResult('join-result', "Oyuna katılma hatası: " + error.message, false);
     }
 }
 
@@ -272,5 +213,75 @@ async function loadUserInfo() {
         }
     } catch (error) {
         console.error("Kullanıcı bilgileri yükleme hatası:", error);
+    }
+}
+
+// Oyun listesini güncelleme fonksiyonu
+async function updateGameList() {
+    try {
+        const contract = new ethers.Contract(contractAddress, contractABI, provider);
+        const gameCount = await contract.gameCount();
+        
+        const gameListElement = document.getElementById("gameList");
+        gameListElement.innerHTML = "";
+        
+        for (let i = gameCount - 1; i >= Math.max(0, gameCount - 10); i--) {
+            const game = await contract.games(i);
+            const isValid = await contract.isValidGame(i);
+            
+            if (!isValid) continue;
+            
+            const gameState = await contract.getGameState(i);
+            const gameInfo = document.createElement("div");
+            gameInfo.className = "game-info";
+            
+            let stateText = "";
+            switch (gameState.state) {
+                case 0: stateText = "Oluşturuldu"; break;
+                case 1: stateText = "Katılındı"; break;
+                case 2: stateText = "Açıklandı"; break;
+                case 3: stateText = "Tamamlandı"; break;
+            }
+            
+            gameInfo.innerHTML = `
+                <p>Oyun #${i}</p>
+                <p>Oluşturan: ${game.creator}</p>
+                <p>Bahis: ${ethers.utils.formatEther(game.stake)} ETH</p>
+                <p>Durum: ${stateText}</p>
+                ${game.state === 0 ? `
+                    <button onclick="joinGamePrompt(${i}, '${ethers.utils.formatEther(game.stake)}')">
+                        Oyuna Katıl
+                    </button>
+                ` : ''}
+            `;
+            
+            gameListElement.appendChild(gameInfo);
+        }
+    } catch (error) {
+        console.error("Oyun listesi güncelleme hatası:", error);
+    }
+}
+
+// Yeni fonksiyonlar
+async function getActiveGames(address) {
+    const contract = new ethers.Contract(contractAddress, contractABI, provider);
+    return await contract.getActiveGames(address);
+}
+
+async function getNextAllowedGameTime(address) {
+    const contract = new ethers.Contract(contractAddress, contractABI, provider);
+    return await contract.getNextAllowedGameTime(address);
+}
+
+async function emergencyWithdraw(gameId) {
+    try {
+        const signer = provider.getSigner();
+        const contract = new ethers.Contract(contractAddress, contractABI, signer);
+        const tx = await contract.emergencyWithdraw(gameId);
+        await tx.wait();
+        console.log("Acil durum çekilmesi başarılı!");
+        updateGameList();
+    } catch (error) {
+        console.error("Acil durum çekilmesi hatası:", error);
     }
 } 
