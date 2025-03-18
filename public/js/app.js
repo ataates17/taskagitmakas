@@ -301,6 +301,9 @@ async function joinGameTransaction(gameId, move, stake) {
         // Move'u uint8 olarak gönder
         const moveValue = ethers.BigNumber.from(move);
 
+        // Stake'i BigNumber'a çevir
+        const stakeWei = ethers.utils.parseEther(stake.toString());
+
         console.log("joinGame çağrısı öncesi parametreler:", {
             gameId: gameIdBN.toString(),
             gameIdHex: gameIdBN.toHexString(),
@@ -349,7 +352,6 @@ async function joinGameTransaction(gameId, move, stake) {
         }
 
         // Stake kontrolü
-        const stakeWei = ethers.utils.parseEther(stake.toString());
         if (!stakeWei.eq(gameInfo.stake)) {
             throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
         }
@@ -363,16 +365,6 @@ async function joinGameTransaction(gameId, move, stake) {
         // Gas tahminini dene
         let estimatedGas;
         try {
-            console.log("joinGame çağrısı öncesi parametreler:", {
-                gameId: gameIdBN.toString(),
-                gameIdHex: gameIdBN.toHexString(),
-                move: moveValue.toString(),
-                moveName: moveMap[move],
-                value: stakeWei.toString(),
-                valueHex: stakeWei.toHexString(),
-                from: userAddress
-            });
-
             // Önce kontrat fonksiyonunu encode edelim
             const data = contract.interface.encodeFunctionData("joinGame", [gameIdBN, moveValue]);
             console.log("Encoded function data:", data);
@@ -425,7 +417,7 @@ async function joinGameTransaction(gameId, move, stake) {
             estimatedCost: ethers.utils.formatEther(totalCost) + " ETH"
         });
 
-        // Transaction'ı gönder - move'u uint8 olarak gönder
+        // Transaction'ı gönder
         const tx = await contract.joinGame(gameIdBN, moveValue, txParams);
         console.log("Transaction gönderildi:", tx.hash);
 
@@ -442,24 +434,7 @@ async function joinGameTransaction(gameId, move, stake) {
 
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
-        
-        let errorMessage = "Oyuna katılırken bir hata oluştu";
-        
-        if (error.error && error.error.message) {
-            errorMessage = error.error.message;
-        } else if (error.message) {
-            if (error.message.includes("insufficient funds")) {
-                errorMessage = "Yetersiz bakiye";
-            } else if (error.message.includes("gas required exceeds")) {
-                errorMessage = "Gas limiti çok yüksek";
-            } else if (error.message.includes("nonce")) {
-                errorMessage = "Lütfen bekleyen işlemlerin tamamlanmasını bekleyin";
-            } else {
-                errorMessage = error.message;
-            }
-        }
-        
-        throw new Error(errorMessage);
+        throw new Error(error.message || "Oyuna katılırken bir hata oluştu");
     }
 }
 
