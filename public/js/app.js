@@ -296,38 +296,15 @@ async function joinGameTransaction(gameId, move, stake) {
         if (isNaN(gameIdNum) || gameIdNum < 0) {
             throw new Error("Geçersiz oyun ID");
         }
-        const gameIdBN = ethers.BigNumber.from(gameIdNum);
 
         // Move'u uint8 olarak gönder
         const moveValue = ethers.BigNumber.from(move);
-
+        
         // Stake'i BigNumber'a çevir
         const stakeWei = ethers.utils.parseEther(stake.toString());
 
-        console.log("joinGame çağrısı öncesi parametreler:", {
-            gameId: gameIdBN.toString(),
-            gameIdHex: gameIdBN.toHexString(),
-            move: moveValue.toString(),
-            moveName: moveMap[move],
-            value: stakeWei.toString(),
-            valueHex: stakeWei.toHexString(),
-            from: userAddress
-        });
-
-        // Oyun sayısını kontrol et
-        const gameCount = await contract.gameCount();
-        if (gameIdBN.gte(gameCount)) {
-            throw new Error("Oyun bulunamadı");
-        }
-
-        // Oyun geçerliliğini kontrol et
-        const isValid = await contract.isValidGame(gameIdBN);
-        if (!isValid) {
-            throw new Error("Bu oyun artık geçerli değil");
-        }
-
         // Oyun bilgilerini kontrol et
-        const gameInfo = await contract.getGameInfo(gameIdBN);
+        const gameInfo = await contract.getGameInfo(gameIdNum);
         console.log("Oyun bilgileri:", {
             creator: gameInfo.creator,
             challenger: gameInfo.challenger,
@@ -344,7 +321,7 @@ async function joinGameTransaction(gameId, move, stake) {
         }
 
         // Oyun durumunu kontrol et
-        const gameState = await contract.getGameState(gameIdBN);
+        const gameState = await contract.getGameState(gameIdNum);
         console.log("Oyun durumu:", gameState);
 
         if (gameState.state !== 0) {
@@ -362,35 +339,12 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error("Yetersiz bakiye");
         }
 
-        // Gas tahminini dene
-        let estimatedGas;
-        try {
-            // Önce kontrat fonksiyonunu encode edelim
-            const data = contract.interface.encodeFunctionData("joinGame", [gameIdBN, moveValue]);
-            console.log("Encoded function data:", data);
-
-            estimatedGas = await contract.estimateGas.joinGame(gameIdBN, moveValue, {
-                from: userAddress,
-                value: stakeWei
-            });
-            console.log("Tahmini gas:", estimatedGas.toString());
-        } catch (error) {
-            console.error("Gas tahmini detaylı hata:", {
-                error: error,
-                message: error.message,
-                data: error.data,
-                transaction: error.transaction,
-                receipt: error.receipt
-            });
-            throw new Error("İşlem başarısız olabilir: " + (error.message || "Bilinmeyen hata"));
-        }
-
-        // Gas fiyatını al ve artır
+        // Gas fiyatını al
         const gasPrice = await provider.getGasPrice();
         const increasedGasPrice = gasPrice.mul(150).div(100); // %50 artış
 
-        // Gas limitini artır
-        const gasLimit = estimatedGas.mul(130).div(100); // %30 buffer
+        // Sabit gas limiti kullan
+        const gasLimit = ethers.BigNumber.from(300000);
 
         // Toplam maliyet kontrolü
         const gasCost = gasLimit.mul(increasedGasPrice);
@@ -401,26 +355,18 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error(`Toplam maliyet için yetersiz bakiye. Gereken: ${requiredEth} ETH`);
         }
 
-        // Transaction parametreleri
-        const txParams = {
-            value: stakeWei,
-            gasLimit: gasLimit,
-            gasPrice: increasedGasPrice
-        };
-
-        console.log("Transaction detayları:", {
-            gameId: gameIdBN.toString(),
+        console.log("Transaction parametreleri:", {
+            gameId: gameIdNum,
             move: moveValue.toString(),
             value: ethers.utils.formatEther(stakeWei),
             gasLimit: gasLimit.toString(),
-            gasPrice: ethers.utils.formatUnits(increasedGasPrice, "gwei") + " gwei",
-            estimatedCost: ethers.utils.formatEther(totalCost) + " ETH"
+            gasPrice: ethers.utils.formatUnits(increasedGasPrice, "gwei") + " gwei"
         });
 
         // Transaction'ı gönder
-        const tx = await contract.joinGame(gameIdBN, moveValue, {
+        const tx = await contract.joinGame(gameIdNum, moveValue, {
             value: stakeWei,
-            gasLimit: 200000,  // Gas limitini düşürdük
+            gasLimit: gasLimit,
             gasPrice: increasedGasPrice
         });
         
@@ -432,6 +378,20 @@ async function joinGameTransaction(gameId, move, stake) {
         if (receipt.status === 0) {
             throw new Error("Transaction başarısız oldu");
         }
+
+        // Reveal işlemi için bekleme
+        console.log("Reveal için bekleniyor...");
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Reveal işlemini başlat
+        const revealTx = await contract.revealMove(gameIdNum, {
+            gasLimit: 200000,
+            gasPrice: increasedGasPrice
+        });
+        
+        console.log("Reveal transaction gönderildi:", revealTx.hash);
+        const revealReceipt = await revealTx.wait(1);
+        console.log("Reveal transaction onaylandı:", revealReceipt);
 
         return receipt;
 
@@ -513,28 +473,33 @@ async function loadGames() {
             const end = gameCount.toNumber();
             
             for (let i = start; i < end; i++) {
-                const isValid = await contract.isValidGame(i);
-                if (!isValid) continue;
+                try {
+                    const isValid = await contract.isValidGame(i);
+                    if (!isValid) continue;
 
-                const gameInfo = await contract.getGameInfo(i);
-                const stake = ethers.utils.formatEther(gameInfo.stake);
-                
-                gamesHtml += `
-                    <div class="game-item">
-                        <h3>Oyun #${i}</h3>
-                        <p><strong>Oluşturan:</strong> ${shortenAddress(gameInfo.creator)}</p>
-                        <p><strong>Bahis:</strong> ${stake} ETH</p>
-                        ${gameInfo.state === 0 ? `
-                            <button onclick="prepareJoinGame(${i}, '${stake}')" class="btn secondary">
-                                Bu Oyuna Katıl (${stake} ETH)
-                            </button>
-                        ` : ''}
-                    </div>
-                `;
+                    const gameInfo = await contract.getGameInfo(i);
+                    const stake = ethers.utils.formatEther(gameInfo.stake);
+                    
+                    gamesHtml += `
+                        <div class="game-item">
+                            <h3>Oyun #${i}</h3>
+                            <p><strong>Oluşturan:</strong> ${shortenAddress(gameInfo.creator)}</p>
+                            <p><strong>Bahis:</strong> ${stake} ETH</p>
+                            ${gameInfo.state === 0 ? `
+                                <button onclick="prepareJoinGame(${i}, '${stake}')" class="btn secondary">
+                                    Bu Oyuna Katıl (${stake} ETH)
+                                </button>
+                            ` : ''}
+                        </div>
+                    `;
+                } catch (error) {
+                    console.error(`Oyun #${i} yüklenirken hata:`, error);
+                    continue;
+                }
             }
         }
         
-        document.getElementById('games-list').innerHTML = gamesHtml;
+        document.getElementById('games-list').innerHTML = gamesHtml || '<p>Katılabileceğiniz oyun bulunamadı.</p>';
     } catch (error) {
         console.error("Oyunları yükleme hatası:", error);
         document.getElementById('games-list').innerHTML = `<p>Hata: ${error.message}</p>`;
