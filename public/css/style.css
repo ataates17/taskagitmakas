@@ -153,17 +153,22 @@ label {
 }
 
 .game-item {
+    margin: 10px 0;
     padding: 15px;
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
-    margin-bottom: 10px;
-    background-color: var(--light-color);
-    transition: transform 0.2s;
+    border-radius: 8px;
+    border: 1px solid #ddd;
 }
 
-.game-item:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--shadow);
+.state-waiting { background-color: #f0f8ff; }
+.state-active { background-color: #f0fff0; }
+.state-revealed { background-color: #fff0f0; }
+.state-finished { background-color: #f0f0f0; }
+.state-unknown { background-color: #fff; }
+
+.btn.secondary {
+    background-color: #6c757d;
+    color: white;
+    margin-top: 10px;
 }
 
 .game-item h3 {

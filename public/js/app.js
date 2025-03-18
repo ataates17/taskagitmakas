@@ -257,20 +257,17 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error("Geçersiz hamle!");
         }
 
-        // gameId'yi sayıya çevir ve kontrol et
-        gameId = parseInt(gameId);
-        if (isNaN(gameId) || gameId < 0) {
-            throw new Error("Geçersiz oyun ID");
-        }
-
+        // gameId'yi BigNumber'a çevir
+        const gameIdBN = ethers.BigNumber.from(gameId);
+        
         // Oyun bilgilerini kontrol et
-        const gameInfo = await contract.getGameInfo(gameId);
-        if (!gameInfo || !gameInfo.creator || gameInfo.creator === ethers.constants.AddressZero) {
+        const gameInfo = await contract.getGameInfo(gameIdBN);
+        if (!gameInfo || gameInfo.creator === ethers.constants.AddressZero) {
             throw new Error("Oyun bulunamadı");
         }
 
         // Oyun durumunu kontrol et
-        const gameState = await contract.getGameState(gameId);
+        const gameState = await contract.getGameState(gameIdBN);
         if (gameState.state !== 0) { // 0 = Created
             throw new Error("Bu oyuna katılınamaz");
         }
@@ -281,28 +278,17 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
         }
 
-        // Gas limitini ve fiyatını kontrol et
-        const gasPrice = await provider.getGasPrice();
-        
         console.log("Join Transaction parametreleri:", {
-            gameId: gameId,
+            gameId: gameIdBN.toString(),
             move: move,
             value: stakeWei.toString()
         });
 
-        // Sabit gas limiti kullan
-        const gasLimit = 300000; // Sabit değer
-
         // Transaction'ı gönder
-        const tx = await contract.joinGame(
-            ethers.BigNumber.from(gameId), // gameId'yi BigNumber'a çevir
-            move,
-            {
-                value: stakeWei,
-                gasLimit: gasLimit,
-                gasPrice: gasPrice
-            }
-        );
+        const tx = await contract.joinGame(gameIdBN, move, {
+            value: stakeWei,
+            gasLimit: 300000
+        });
         
         console.log("Join Transaction gönderildi:", tx.hash);
         
@@ -317,17 +303,7 @@ async function joinGameTransaction(gameId, move, stake) {
         
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
-        
-        // Kontrat hata mesajını çıkar
-        let errorMessage = "Oyuna katılırken bir hata oluştu";
-        if (error.error && error.error.message) {
-            errorMessage = error.error.message;
-        } else if (error.message && error.message.includes("execution reverted")) {
-            const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
-            errorMessage = revertReason;
-        }
-        
-        throw new Error(errorMessage);
+        throw new Error(error.message || "Oyuna katılırken bir hata oluştu");
     }
 }
 
@@ -395,32 +371,42 @@ async function loadGames() {
         const gameCount = await contract.gameCount();
         let gamesHtml = '';
         
-        if (gameCount == 0) {
+        if (gameCount.eq(0)) {
             gamesHtml = '<p>Henüz oyun oluşturulmamış.</p>';
         } else {
             // En son 10 oyunu göster
-            const start = Math.max(0, gameCount - 10);
-            const end = gameCount;
+            const start = Math.max(0, gameCount.sub(10).toNumber());
+            const end = gameCount.toNumber();
             
             for (let i = start; i < end; i++) {
+                const isValid = await contract.isValidGame(i);
+                if (!isValid) continue;
+
                 const gameInfo = await contract.getGameInfo(i);
+                const gameState = await contract.getGameState(i);
+                
                 const creator = gameInfo.creator;
                 const challenger = gameInfo.challenger;
-                const stake = weiToEth(gameInfo.stake);
+                const stake = ethers.utils.formatEther(gameInfo.stake);
                 const state = gameInfo.state;
                 const winner = gameInfo.winner;
                 
-                const stateText = stateToString(state);
-                const stateClass = getStateColorClass(state);
+                const stateText = getGameStateText(state);
+                const stateClass = getGameStateClass(state);
                 
                 gamesHtml += `
                     <div class="game-item ${stateClass}">
                         <h3>Oyun #${i}</h3>
                         <p><strong>Oluşturan:</strong> ${shortenAddress(creator)}</p>
-                        <p><strong>Rakip:</strong> ${challenger === '0x0000000000000000000000000000000000000000' ? 'Yok' : shortenAddress(challenger)}</p>
+                        <p><strong>Rakip:</strong> ${challenger === ethers.constants.AddressZero ? 'Yok' : shortenAddress(challenger)}</p>
                         <p><strong>Bahis:</strong> ${stake} ETH</p>
                         <p><strong>Durum:</strong> ${stateText}</p>
-                        ${winner !== '0x0000000000000000000000000000000000000000' ? `<p><strong>Kazanan:</strong> ${shortenAddress(winner)}</p>` : ''}
+                        ${winner !== ethers.constants.AddressZero ? `<p><strong>Kazanan:</strong> ${shortenAddress(winner)}</p>` : ''}
+                        ${state === 0 ? `
+                            <button onclick="prepareJoinGame(${i}, '${stake}')" class="btn secondary">
+                                Oyuna Katıl
+                            </button>
+                        ` : ''}
                     </div>
                 `;
             }
@@ -430,6 +416,36 @@ async function loadGames() {
     } catch (error) {
         console.error("Oyunları yükleme hatası:", error);
         document.getElementById('games-list').innerHTML = `<p>Hata: ${error.message}</p>`;
+    }
+}
+
+// Oyuna katılmak için hazırlık
+function prepareJoinGame(gameId, stake) {
+    document.getElementById('game-id').value = gameId;
+    document.getElementById('join-stake').value = stake;
+    // Sayfayı oyuna katılma formuna kaydır
+    document.querySelector('.card:nth-child(3)').scrollIntoView({ behavior: 'smooth' });
+}
+
+// Oyun durumu metni
+function getGameStateText(state) {
+    switch(state) {
+        case 0: return "Katılım Bekliyor";
+        case 1: return "Oyun Başladı";
+        case 2: return "Hamle Açıklandı";
+        case 3: return "Tamamlandı";
+        default: return "Bilinmiyor";
+    }
+}
+
+// Oyun durumu CSS sınıfı
+function getGameStateClass(state) {
+    switch(state) {
+        case 0: return "state-waiting";
+        case 1: return "state-active";
+        case 2: return "state-revealed";
+        case 3: return "state-finished";
+        default: return "state-unknown";
     }
 }
 
