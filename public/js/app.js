@@ -280,8 +280,15 @@ async function handleJoinGame() {
 // Oyuna katılma transaction'ı
 async function joinGameTransaction(gameId, move, stake) {
     try {
-        if (!move || move < 1 || move > 3) {
-            throw new Error("Geçersiz hamle!");
+        // Move enum kontrolü (1: Rock, 2: Paper, 3: Scissors)
+        const moveMap = {
+            1: "Rock",
+            2: "Paper", 
+            3: "Scissors"
+        };
+
+        if (!moveMap[move]) {
+            throw new Error("Geçersiz hamle! Lütfen Taş (1), Kağıt (2) veya Makas (3) seçin");
         }
 
         // gameId'yi sayı olarak kontrol et ve BigNumber'a çevir
@@ -291,12 +298,17 @@ async function joinGameTransaction(gameId, move, stake) {
         }
         const gameIdBN = ethers.BigNumber.from(gameIdNum);
 
-        console.log("GameID kontrol:", {
-            original: gameId,
-            parsed: gameIdNum,
-            asBigNumber: gameIdBN.toString(),
-            move: move,
-            stake: stake
+        // Move'u uint8 olarak gönder
+        const moveValue = ethers.BigNumber.from(move);
+
+        console.log("joinGame çağrısı öncesi parametreler:", {
+            gameId: gameIdBN.toString(),
+            gameIdHex: gameIdBN.toHexString(),
+            move: moveValue.toString(),
+            moveName: moveMap[move],
+            value: stakeWei.toString(),
+            valueHex: stakeWei.toHexString(),
+            from: userAddress
         });
 
         // Oyun sayısını kontrol et
@@ -351,13 +363,33 @@ async function joinGameTransaction(gameId, move, stake) {
         // Gas tahminini dene
         let estimatedGas;
         try {
-            estimatedGas = await contract.estimateGas.joinGame(gameIdBN, move, {
+            console.log("joinGame çağrısı öncesi parametreler:", {
+                gameId: gameIdBN.toString(),
+                gameIdHex: gameIdBN.toHexString(),
+                move: moveValue.toString(),
+                moveName: moveMap[move],
+                value: stakeWei.toString(),
+                valueHex: stakeWei.toHexString(),
+                from: userAddress
+            });
+
+            // Önce kontrat fonksiyonunu encode edelim
+            const data = contract.interface.encodeFunctionData("joinGame", [gameIdBN, moveValue]);
+            console.log("Encoded function data:", data);
+
+            estimatedGas = await contract.estimateGas.joinGame(gameIdBN, moveValue, {
                 from: userAddress,
                 value: stakeWei
             });
             console.log("Tahmini gas:", estimatedGas.toString());
         } catch (error) {
-            console.error("Gas tahmini hatası:", error);
+            console.error("Gas tahmini detaylı hata:", {
+                error: error,
+                message: error.message,
+                data: error.data,
+                transaction: error.transaction,
+                receipt: error.receipt
+            });
             throw new Error("İşlem başarısız olabilir: " + (error.message || "Bilinmeyen hata"));
         }
 
@@ -386,15 +418,15 @@ async function joinGameTransaction(gameId, move, stake) {
 
         console.log("Transaction detayları:", {
             gameId: gameIdBN.toString(),
-            move: move,
+            move: moveValue.toString(),
             value: ethers.utils.formatEther(stakeWei),
             gasLimit: gasLimit.toString(),
             gasPrice: ethers.utils.formatUnits(increasedGasPrice, "gwei") + " gwei",
             estimatedCost: ethers.utils.formatEther(totalCost) + " ETH"
         });
 
-        // Transaction'ı gönder
-        const tx = await contract.joinGame(gameIdBN, move, txParams);
+        // Transaction'ı gönder - move'u uint8 olarak gönder
+        const tx = await contract.joinGame(gameIdBN, moveValue, txParams);
         console.log("Transaction gönderildi:", tx.hash);
 
         // Transaction'ı bekle

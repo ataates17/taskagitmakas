@@ -381,7 +381,7 @@ const contractABI = [
         "type": "uint256"
       },
       {
-        "internalType": "enum RockPaperScissorsV2.Move",
+        "internalType": "enum RockPaperScissors.Move",
         "name": "move",
         "type": "uint8"
       }
