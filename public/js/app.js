@@ -266,17 +266,32 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error("Geçersiz hamle!");
         }
 
-        // gameId'yi BigNumber'a çevir
+        // gameId'yi BigNumber'a çevir ve kontrol et
         const gameIdBN = ethers.BigNumber.from(gameId);
-        
+        console.log("GameID kontrol:", {
+            original: gameId,
+            asBigNumber: gameIdBN.toString(),
+            move: move,
+            stake: stake
+        });
+
         // Oyun bilgilerini kontrol et
         const gameInfo = await contract.getGameInfo(gameIdBN);
+        console.log("Oyun bilgileri:", {
+            creator: gameInfo.creator,
+            challenger: gameInfo.challenger,
+            stake: ethers.utils.formatEther(gameInfo.stake),
+            state: gameInfo.state
+        });
+
         if (!gameInfo || gameInfo.creator === ethers.constants.AddressZero) {
             throw new Error("Oyun bulunamadı");
         }
 
         // Oyun durumunu kontrol et
         const gameState = await contract.getGameState(gameIdBN);
+        console.log("Oyun durumu:", gameState);
+
         if (gameState.state !== 0) { // 0 = Created
             throw new Error("Bu oyuna katılınamaz");
         }
@@ -287,74 +302,63 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
         }
 
-        // Gas fiyatını ve limitini hesapla
+        // Gas fiyatını hesapla
         const gasPrice = await provider.getGasPrice();
         const increasedGasPrice = gasPrice.mul(120).div(100); // %20 artış
 
-        // Gas limitini tahmin et
-        let estimatedGas;
-        try {
-            estimatedGas = await contract.estimateGas.joinGame(gameIdBN, move, {
-                value: stakeWei
-            });
-        } catch (error) {
-            console.error("Gas tahmini hatası:", error);
-            estimatedGas = ethers.BigNumber.from(300000); // Varsayılan değer
-        }
+        // Transaction parametrelerini hazırla
+        const txParams = {
+            value: stakeWei,
+            gasLimit: 300000, // Sabit gas limiti kullan
+            gasPrice: increasedGasPrice
+        };
 
-        // Gas limitine %50 buffer ekle
-        const gasLimit = estimatedGas.mul(150).div(100);
-
-        console.log("Join Transaction parametreleri:", {
+        console.log("Transaction parametreleri:", {
             gameId: gameIdBN.toString(),
             move: move,
-            value: stakeWei.toString(),
-            gasLimit: gasLimit.toString(),
-            gasPrice: increasedGasPrice.toString()
+            value: ethers.utils.formatEther(stakeWei),
+            gasLimit: txParams.gasLimit,
+            gasPrice: txParams.gasPrice.toString()
         });
 
         // Transaction'ı gönder
-        const tx = await contract.joinGame(gameIdBN, move, {
-            value: stakeWei,
-            gasLimit: gasLimit,
-            gasPrice: increasedGasPrice,
-            nonce: await provider.getTransactionCount(userAddress, "latest")
-        });
-        
-        console.log("Join Transaction gönderildi:", tx.hash);
-        
+        const tx = await contract.joinGame(gameIdBN, move, txParams);
+        console.log("Transaction gönderildi:", tx.hash);
+
         // Transaction'ı bekle
         console.log("Transaction onayı bekleniyor...");
-        const receipt = await tx.wait(1); // 1 onay bekle
+        const receipt = await tx.wait(1);
         console.log("Transaction onaylandı:", receipt);
-        
+
         if (receipt.status === 0) {
             throw new Error("Transaction başarısız oldu");
         }
-        
+
         return receipt;
-        
+
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
-        
+
         // Hata mesajını daha anlaşılır hale getir
         let errorMessage = "Oyuna katılırken bir hata oluştu";
-        
+
         if (error.error && error.error.message) {
             errorMessage = error.error.message;
         } else if (error.message) {
             if (error.message.includes("insufficient funds")) {
                 errorMessage = "Yetersiz bakiye";
             } else if (error.message.includes("gas required exceeds")) {
-                errorMessage = "Gas limiti çok düşük, lütfen daha yüksek bir limit ile tekrar deneyin";
+                errorMessage = "Gas limiti çok düşük";
             } else if (error.message.includes("nonce")) {
-                errorMessage = "Transaction sırası hatası, lütfen tekrar deneyin";
+                errorMessage = "Lütfen biraz bekleyip tekrar deneyin";
+            } else if (error.message.includes("arithmetic")) {
+                errorMessage = "Geçersiz oyun ID";
             } else if (error.message.includes("execution reverted")) {
                 const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
                 errorMessage = revertReason;
             }
         }
-        
+
         throw new Error(errorMessage);
     }
 }
@@ -435,28 +439,16 @@ async function loadGames() {
                 if (!isValid) continue;
 
                 const gameInfo = await contract.getGameInfo(i);
-                const gameState = await contract.getGameState(i);
-                
-                const creator = gameInfo.creator;
-                const challenger = gameInfo.challenger;
                 const stake = ethers.utils.formatEther(gameInfo.stake);
-                const state = gameInfo.state;
-                const winner = gameInfo.winner;
-                
-                const stateText = getGameStateText(state);
-                const stateClass = getGameStateClass(state);
                 
                 gamesHtml += `
-                    <div class="game-item ${stateClass}">
+                    <div class="game-item">
                         <h3>Oyun #${i}</h3>
-                        <p><strong>Oluşturan:</strong> ${shortenAddress(creator)}</p>
-                        <p><strong>Rakip:</strong> ${challenger === ethers.constants.AddressZero ? 'Yok' : shortenAddress(challenger)}</p>
+                        <p><strong>Oluşturan:</strong> ${shortenAddress(gameInfo.creator)}</p>
                         <p><strong>Bahis:</strong> ${stake} ETH</p>
-                        <p><strong>Durum:</strong> ${stateText}</p>
-                        ${winner !== ethers.constants.AddressZero ? `<p><strong>Kazanan:</strong> ${shortenAddress(winner)}</p>` : ''}
-                        ${state === 0 ? `
+                        ${gameInfo.state === 0 ? `
                             <button onclick="prepareJoinGame(${i}, '${stake}')" class="btn secondary">
-                                Oyuna Katıl
+                                Bu Oyuna Katıl (${stake} ETH)
                             </button>
                         ` : ''}
                     </div>
@@ -473,9 +465,14 @@ async function loadGames() {
 
 // Oyuna katılmak için hazırlık
 function prepareJoinGame(gameId, stake) {
+    if (!gameId || isNaN(gameId)) {
+        console.error("Geçersiz oyun ID:", gameId);
+        return;
+    }
+
+    console.log("Oyuna katılım hazırlığı:", { gameId, stake });
     document.getElementById('game-id').value = gameId;
     document.getElementById('join-stake').value = stake;
-    // Sayfayı oyuna katılma formuna kaydır
     document.querySelector('.card:nth-child(3)').scrollIntoView({ behavior: 'smooth' });
 }
 
