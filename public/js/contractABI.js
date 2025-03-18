@@ -381,7 +381,7 @@ const contractABI = [
         "type": "uint256"
       },
       {
-        "internalType": "enum RockPaperScissors.Move",
+        "internalType": "enum RockPaperScissorsV2.Move",
         "name": "move",
         "type": "uint8"
       }
@@ -636,9 +636,22 @@ const contractABI = [
     ],
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "revealMove",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   }
 ];
 
 // Sepolia testnet üzerindeki kontrat adresi
 // NOT: Bu adresi kendi dağıttığınız kontrat adresi ile değiştirin
-const contractAddress = "0x60654bD649452C4539457bc3389A0CADBb36b7BA"; 
+const contractAddress = "0xed077E954d7044e52DCC53af39D251b87E9a3eDc"; // Yeni deploy ettiğiniz kontrat adresini buraya yazın

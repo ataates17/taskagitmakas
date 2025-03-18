@@ -418,11 +418,14 @@ async function joinGameTransaction(gameId, move, stake) {
         });
 
         // Transaction'ı gönder
-        const tx = await contract.joinGame(gameIdBN, moveValue, txParams);
+        const tx = await contract.joinGame(gameIdBN, moveValue, {
+            value: stakeWei,
+            gasLimit: 200000,  // Gas limitini düşürdük
+            gasPrice: increasedGasPrice
+        });
+        
         console.log("Transaction gönderildi:", tx.hash);
-
-        // Transaction'ı bekle
-        console.log("Transaction onayı bekleniyor...");
+        
         const receipt = await tx.wait(1);
         console.log("Transaction onaylandı:", receipt);
 

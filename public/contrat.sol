@@ -184,20 +184,25 @@ contract RockPaperScissorsV2 {
         require(msg.value == game.stake, "Stake amount must match the creator's stake");
         require(block.timestamp <= game.creationTime + 1 days, "Game expired");
         
-        // Önce state'i güncelle
+        // State'i güncelle
         game.challenger = msg.sender;
         game.challengerMove = move;
         game.state = GameState.Joined;
         game.joinTime = block.timestamp;
         
-        emit GameJoined(gameId, msg.sender, move);
+        gameLastAction[gameId] = block.timestamp;
         
-        // Gas limitini kontrol et
-        require(gasleft() >= MAX_GAS_LIMIT / 2, "Insufficient gas for reveal");
+        emit GameJoined(gameId, msg.sender, move);
+    }
+    
+    function revealMove(uint256 gameId) external nonReentrant {
+        Game storage game = games[gameId];
+        _validateGameState(gameId, game);
+        
+        require(game.state == GameState.Joined, "Game is not in Joined state");
+        require(msg.sender == game.creator, "Only creator can reveal move");
         
         _revealMove(gameId);
-        
-        gameLastAction[gameId] = block.timestamp;
     }
     
     function _revealMove(uint256 gameId) private {
