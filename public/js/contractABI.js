@@ -379,6 +379,11 @@ const contractABI = [
         "internalType": "uint256",
         "name": "gameId",
         "type": "uint256"
+      },
+      {
+        "internalType": "enum RockPaperScissorsV2.Move",
+        "name": "move",
+        "type": "uint8"
       }
     ],
     "name": "joinGame",

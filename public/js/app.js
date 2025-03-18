@@ -277,9 +277,13 @@ async function joinGameTransaction(gameId, move, stake) {
 
         // Gas limitini ve fiyatını kontrol et
         const gasPrice = await provider.getGasPrice();
-        const gasLimit = await contract.estimateGas.joinGame(gameId, move, {
-            value: stakeWei
-        });
+        
+        // joinGame fonksiyonunu sadece gameId ve move parametreleriyle çağır
+        const gasLimit = await contract.estimateGas.joinGame(
+            gameId,  // gameId
+            move,    // move
+            { value: stakeWei }  // transaction options
+        );
         
         console.log("Join Transaction detayları:", {
             gameId,
@@ -290,11 +294,15 @@ async function joinGameTransaction(gameId, move, stake) {
         });
 
         // Transaction'ı gönder
-        const tx = await contract.joinGame(gameId, move, {
-            value: stakeWei,
-            gasLimit: gasLimit.mul(120).div(100), // %20 buffer
-            gasPrice: gasPrice
-        });
+        const tx = await contract.joinGame(
+            gameId,  // gameId
+            move,    // move
+            {       // transaction options
+                value: stakeWei,
+                gasLimit: gasLimit.mul(120).div(100), // %20 buffer
+                gasPrice: gasPrice
+            }
+        );
         
         console.log("Join Transaction gönderildi:", tx.hash);
         
