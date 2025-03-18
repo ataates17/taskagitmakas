@@ -277,7 +277,40 @@ async function handleJoinGame() {
     }
 }
 
-// Oyuna katılma transaction'ı
+// Gas fiyatını ayarla
+async function getOptimizedGasPrice() {
+    try {
+        // Base fee'yi al
+        const block = await provider.getBlock("latest");
+        const baseFee = block.baseFeePerGas;
+
+        // Mevcut gas fiyatını al
+        const gasPrice = await provider.getGasPrice();
+
+        // Base fee'nin 2 katı veya mevcut gas fiyatının %150'si - hangisi yüksekse
+        const recommendedPrice = ethers.BigNumber.from(
+            Math.max(
+                baseFee.mul(2).toNumber(),
+                gasPrice.mul(150).div(100).toNumber()
+            )
+        );
+
+        console.log("Gas fiyatları:", {
+            baseFee: ethers.utils.formatUnits(baseFee, "gwei") + " gwei",
+            currentPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " gwei",
+            recommendedPrice: ethers.utils.formatUnits(recommendedPrice, "gwei") + " gwei"
+        });
+
+        return recommendedPrice;
+    } catch (error) {
+        console.error("Gas fiyatı hesaplama hatası:", error);
+        // Hata durumunda mevcut fiyatın %200'ünü kullan
+        const gasPrice = await provider.getGasPrice();
+        return gasPrice.mul(200).div(100);
+    }
+}
+
+// Oyuna katılma transaction'ı güncelleme
 async function joinGameTransaction(gameId, move, stake) {
     try {
         // Move enum kontrolü (1: Rock, 2: Paper, 3: Scissors)
@@ -353,15 +386,15 @@ async function joinGameTransaction(gameId, move, stake) {
         const activeGames = await contract.getActiveGames(userAddress);
         console.log("Aktif oyun sayısı:", activeGames.toString());
 
-        // Gas fiyatını al
-        const gasPrice = await provider.getGasPrice();
-        const increasedGasPrice = gasPrice.mul(120).div(100); // %20 artış
+        // Gas fiyatını optimize et
+        const gasPrice = await getOptimizedGasPrice();
 
         // Transaction parametreleri
         const txParams = {
             value: stakeWei,
-            gasLimit: 200000, // Gas limitini düşürdük
-            gasPrice: increasedGasPrice
+            gasLimit: 150000,
+            gasPrice: gasPrice,
+            type: 0 // Legacy transaction type
         };
 
         console.log("Transaction parametreleri:", {
@@ -369,7 +402,10 @@ async function joinGameTransaction(gameId, move, stake) {
             move: moveValue.toString(),
             value: ethers.utils.formatEther(stakeWei),
             gasLimit: txParams.gasLimit,
-            gasPrice: ethers.utils.formatUnits(increasedGasPrice, "gwei") + " gwei"
+            gasPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " gwei",
+            estimatedCost: ethers.utils.formatEther(
+                gasPrice.mul(txParams.gasLimit).add(stakeWei)
+            ) + " ETH"
         });
 
         // Transaction'ı gönder
@@ -399,7 +435,7 @@ async function joinGameTransaction(gameId, move, stake) {
         // Reveal işlemini başlat
         const revealTx = await contract.revealMove(gameIdNum, {
             gasLimit: 200000,
-            gasPrice: increasedGasPrice
+            gasPrice: gasPrice
         });
         
         console.log("Reveal transaction gönderildi:", revealTx.hash);
@@ -664,4 +700,42 @@ async function emergencyWithdraw(gameId) {
     } catch (error) {
         console.error("Acil durum çekilmesi hatası:", error);
     }
+}
+
+// Gas fiyatlarını kontrol et
+async function checkGasPrices() {
+    const block = await provider.getBlock("latest");
+    const baseFee = block.baseFeePerGas;
+    const gasPrice = await provider.getGasPrice();
+    
+    console.log("Gas Fiyatları:", {
+        baseFee: ethers.utils.formatUnits(baseFee, "gwei") + " gwei",
+        currentPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " gwei",
+        maxFeePerGas: ethers.utils.formatUnits(baseFee.mul(2), "gwei") + " gwei"
+    });
+
+    return {
+        baseFee,
+        gasPrice,
+        maxFeePerGas: baseFee.mul(2)
+    };
+}
+
+// Transaction göndermeden önce gas kontrolü
+async function validateTransaction(value) {
+    const gasPrices = await checkGasPrices();
+    const balance = await provider.getBalance(userAddress);
+    
+    // Tahmini gas maliyeti (150,000 gas * current gas price)
+    const estimatedGasCost = gasPrices.gasPrice.mul(150000);
+    const totalCost = estimatedGasCost.add(value);
+    
+    if (balance.lt(totalCost)) {
+        throw new Error(`Yetersiz bakiye. Gereken: ${ethers.utils.formatEther(totalCost)} ETH`);
+    }
+    
+    return {
+        gasPrice: gasPrices.gasPrice,
+        gasLimit: 150000
+    };
 } 

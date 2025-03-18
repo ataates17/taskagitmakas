@@ -170,8 +170,8 @@ contract RockPaperScissorsV2 {
     }
     
     function joinGame(uint256 gameId, Move move) external payable nonReentrant {
-        require(tx.gasprice <= block.basefee * 2, "Gas price too high");
-        require(gasleft() >= MAX_GAS_LIMIT, "Insufficient gas");
+        // Gas fiyatı kontrolünü kaldır, çünkü frontend'de optimize ediyoruz
+        require(gasleft() >= 100000, "Insufficient gas"); // Minimum gas limitini düşür
         require(gameId < gameCount && gameId >= gameCount - 100, "Invalid game ID");
         
         Game storage game = games[gameId];
@@ -196,6 +196,8 @@ contract RockPaperScissorsV2 {
     }
     
     function revealMove(uint256 gameId) external nonReentrant {
+        require(gasleft() >= 80000, "Insufficient gas for reveal"); // Reveal için gas limitini düşür
+        
         Game storage game = games[gameId];
         _validateGameState(gameId, game);
         
