@@ -339,27 +339,51 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
         }
 
-        // Nonce'u al
-        const nonce = await provider.getTransactionCount(userAddress, "latest");
+        // Bakiye kontrolü
+        const balance = await provider.getBalance(userAddress);
+        if (balance.lt(stakeWei)) {
+            throw new Error("Yetersiz bakiye");
+        }
 
         // Gas fiyatını hesapla
         const gasPrice = await provider.getGasPrice();
         const increasedGasPrice = gasPrice.mul(120).div(100); // %20 artış
 
+        // Gas limitini tahmin et
+        const gasLimit = ethers.BigNumber.from(300000);
+        const estimatedGasCost = gasLimit.mul(increasedGasPrice);
+
+        // Toplam maliyet kontrolü (stake + gas)
+        const totalCost = stakeWei.add(estimatedGasCost);
+        if (balance.lt(totalCost)) {
+            throw new Error("Gas maliyeti için yetersiz bakiye");
+        }
+
+        // Nonce'u al ve kontrol et
+        const currentNonce = await provider.getTransactionCount(userAddress, "latest");
+        const pendingNonce = await provider.getTransactionCount(userAddress, "pending");
+        
+        if (currentNonce !== pendingNonce) {
+            throw new Error("Bekleyen işleminiz var, lütfen tamamlanmasını bekleyin");
+        }
+
         // Transaction parametrelerini hazırla
         const txParams = {
+            from: userAddress,
+            to: contractAddress,
             value: stakeWei,
-            gasLimit: 300000,
+            gasLimit: gasLimit,
             gasPrice: increasedGasPrice,
-            nonce: nonce
+            nonce: currentNonce
         };
 
         console.log("Transaction parametreleri:", {
             gameId: gameIdBN.toString(),
             move: move,
             value: ethers.utils.formatEther(stakeWei),
-            nonce: nonce,
-            ...txParams
+            nonce: currentNonce,
+            gasLimit: gasLimit.toString(),
+            gasPrice: increasedGasPrice.toString()
         });
 
         // Transaction'ı gönder
@@ -390,7 +414,7 @@ async function joinGameTransaction(gameId, move, stake) {
             } else if (error.message.includes("gas required exceeds")) {
                 errorMessage = "Gas limiti çok düşük";
             } else if (error.message.includes("nonce")) {
-                errorMessage = "Lütfen MetaMask'ı yenileyip tekrar deneyin";
+                errorMessage = "Lütfen bekleyen işlemlerin tamamlanmasını bekleyin";
             } else if (error.message.includes("arithmetic")) {
                 errorMessage = "Geçersiz oyun ID";
             } else if (error.message.includes("execution reverted")) {
