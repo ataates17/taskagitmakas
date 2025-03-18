@@ -96,8 +96,17 @@ async function handleCreateGame() {
             return;
         }
 
+        // Loading mesajı göster
+        const resultDiv = document.getElementById('create-result');
+        resultDiv.innerHTML = "Oyun oluşturuluyor...";
+        resultDiv.className = "result pending";
+
         // Oyun oluştur
         await createGameTransaction(move, stake);
+        
+        // Başarı mesajı göster
+        resultDiv.innerHTML = "Oyun başarıyla oluşturuldu!";
+        resultDiv.className = "result success";
         
         // Formu temizle
         moveSelect.value = "";
@@ -108,28 +117,36 @@ async function handleCreateGame() {
         
     } catch (error) {
         console.error("Oyun oluşturma hatası:", error);
-        alert("Oyun oluşturulurken bir hata oluştu: " + error.message);
+        // Hata mesajı göster
+        const resultDiv = document.getElementById('create-result');
+        resultDiv.innerHTML = "Hata: " + error.message;
+        resultDiv.className = "result error";
     }
 }
 
 // Oyun oluşturma transaction'ı
 async function createGameTransaction(move, stake) {
     try {
+        if (!move || move < 1 || move > 3) {
+            throw new Error("Geçersiz hamle!");
+        }
+
         // Gas limitini ve fiyatını kontrol et
         const gasPrice = await provider.getGasPrice();
         
+        // Move değerini uint8 olarak gönder
         const tx = await contract.createGame(move, {
             value: ethers.utils.parseEther(stake.toString()),
-            gasLimit: 300000, // Sabit gas limiti
+            gasLimit: 300000,
             gasPrice: gasPrice
         });
         
-        await tx.wait();
-        console.log("Oyun başarıyla oluşturuldu!");
+        const receipt = await tx.wait();
+        console.log("Oyun başarıyla oluşturuldu! Transaction:", receipt.transactionHash);
         
     } catch (error) {
         console.error("Transaction hatası:", error);
-        throw error; // Hatayı yukarı ilet
+        throw new Error(error.message || "Oyun oluşturulurken bir hata oluştu");
     }
 }
 

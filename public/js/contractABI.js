@@ -213,14 +213,9 @@ const contractABI = [
   {
     "inputs": [
       {
-        "internalType": "bytes32",
-        "name": "commitment",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "salt",
-        "type": "bytes32"
+        "internalType": "enum RockPaperScissorsV2.Move",
+        "name": "move",
+        "type": "uint8"
       }
     ],
     "name": "createGame",
