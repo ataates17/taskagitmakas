@@ -369,8 +369,6 @@ async function joinGameTransaction(gameId, move, stake) {
 
         // Transaction parametrelerini hazırla
         const txParams = {
-            from: userAddress,
-            to: contractAddress,
             value: stakeWei,
             gasLimit: gasLimit,
             gasPrice: increasedGasPrice,
