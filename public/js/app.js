@@ -310,7 +310,7 @@ async function getOptimizedGasPrice() {
     }
 }
 
-// Oyuna katılma transaction'ı güncelleme
+// Oyuna katılma transaction'ı
 async function joinGameTransaction(gameId, move, stake) {
     try {
         // Move enum kontrolü (1: Rock, 2: Paper, 3: Scissors)
@@ -393,25 +393,27 @@ async function joinGameTransaction(gameId, move, stake) {
         const txParams = {
             value: stakeWei,
             gasLimit: 150000,
-            gasPrice: gasPrice,
-            type: 0 // Legacy transaction type
+            type: 2, // EIP-1559
+            maxFeePerGas: ethers.utils.parseUnits("2", "gwei"),
+            maxPriorityFeePerGas: ethers.utils.parseUnits("1", "gwei")
         };
 
-        console.log("Transaction parametreleri:", {
-            gameId: gameIdNum,
-            move: moveValue.toString(),
-            value: ethers.utils.formatEther(stakeWei),
-            gasLimit: txParams.gasLimit,
-            gasPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " gwei",
-            estimatedCost: ethers.utils.formatEther(
-                gasPrice.mul(txParams.gasLimit).add(stakeWei)
-            ) + " ETH"
-        });
+        // Legacy transaction için yedek parametreler
+        const legacyTxParams = {
+            value: stakeWei,
+            gasLimit: 150000,
+            gasPrice: await provider.getGasPrice()
+        };
 
         // Transaction'ı gönder
-        console.log("Transaction gönderiliyor...");
-        const tx = await contract.joinGame(gameIdNum, moveValue, txParams);
-        console.log("Transaction gönderildi:", tx.hash);
+        let tx;
+        try {
+            // Önce EIP-1559 formatını dene
+            tx = await contract.joinGame(gameIdNum, moveValue, txParams);
+        } catch (error) {
+            console.log("EIP-1559 başarısız, legacy transaction deneniyor...");
+            tx = await contract.joinGame(gameIdNum, moveValue, legacyTxParams);
+        }
 
         // Transaction'ı bekle
         console.log("Transaction onayı bekleniyor...");
@@ -419,28 +421,19 @@ async function joinGameTransaction(gameId, move, stake) {
         console.log("Transaction onaylandı:", receipt);
 
         if (receipt.status === 0) {
-            // Hata sebebini bul
-            const reason = await provider.call(tx, receipt.blockNumber);
-            throw new Error("Transaction başarısız oldu: " + reason);
+            // Hata sebebini bulmaya çalış
+            try {
+                await provider.call(tx, receipt.blockNumber);
+            } catch (error) {
+                const reason = error.data || error.message;
+                throw new Error("Transaction başarısız oldu: " + reason);
+            }
+            throw new Error("Transaction başarısız oldu");
         }
 
         // Oyun durumunu kontrol et
         const gameStateAfter = await contract.getGameState(gameIdNum);
         console.log("Oyun durumu (katılımdan sonra):", gameStateAfter);
-
-        // Reveal işlemi için bekleme
-        console.log("Reveal için bekleniyor...");
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Reveal işlemini başlat
-        const revealTx = await contract.revealMove(gameIdNum, {
-            gasLimit: 200000,
-            gasPrice: gasPrice
-        });
-        
-        console.log("Reveal transaction gönderildi:", revealTx.hash);
-        const revealReceipt = await revealTx.wait(1);
-        console.log("Reveal transaction onaylandı:", revealReceipt);
 
         return receipt;
 
@@ -450,16 +443,12 @@ async function joinGameTransaction(gameId, move, stake) {
         // Hata mesajını daha anlaşılır hale getir
         let errorMessage = "Oyuna katılırken bir hata oluştu";
         
-        if (error.error && error.error.data) {
-            // Kontrat hata mesajını decode et
-            try {
-                const decodedError = contract.interface.parseError(error.error.data);
-                errorMessage = decodedError.name + ": " + decodedError.args.join(", ");
-            } catch (e) {
-                if (error.error.message) {
-                    errorMessage = error.error.message;
-                }
-            }
+        if (error.data) {
+            // Revert reason'ı bul
+            const data = error.data;
+            const reason = data.substring(138);
+            const decoded = ethers.utils.toUtf8String('0x' + reason);
+            errorMessage = decoded;
         } else if (error.message) {
             if (error.message.includes("insufficient funds")) {
                 errorMessage = "Yetersiz bakiye";

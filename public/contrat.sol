@@ -170,11 +170,11 @@ contract RockPaperScissorsV2 {
     }
     
     function joinGame(uint256 gameId, Move move) external payable nonReentrant {
-        // Gas fiyatı kontrolünü kaldır, çünkü frontend'de optimize ediyoruz
         require(gasleft() >= 100000, "Insufficient gas"); // Minimum gas limitini düşür
         require(gameId < gameCount && gameId >= gameCount - 100, "Invalid game ID");
         
         Game storage game = games[gameId];
+        require(gameExists[gameId], "Game does not exist");
         _validateGameState(gameId, game);
         
         require(game.state == GameState.Created, "Game is not in Created state");

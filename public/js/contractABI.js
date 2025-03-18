@@ -653,4 +653,4 @@ const contractABI = [
 ];
 
 // Sepolia testnet üzerindeki kontrat adresi
-const contractAddress = "0x0459EEeF1a58fE508cC65247C2BCC3152293c8EB"; // Yeni deploy ettiğiniz kontrat adresini buraya yazın
+const contractAddress = "0x2441E5E65f6E9653e5Ae1bCb6a0648f34D3a26d4"; // Yeni deploy ettiğiniz kontrat adresini buraya yazın
