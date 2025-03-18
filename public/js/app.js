@@ -257,9 +257,15 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error("Geçersiz hamle!");
         }
 
+        // gameId'yi sayıya çevir ve kontrol et
+        gameId = parseInt(gameId);
+        if (isNaN(gameId) || gameId < 0) {
+            throw new Error("Geçersiz oyun ID");
+        }
+
         // Oyun bilgilerini kontrol et
         const gameInfo = await contract.getGameInfo(gameId);
-        if (!gameInfo) {
+        if (!gameInfo || !gameInfo.creator || gameInfo.creator === ethers.constants.AddressZero) {
             throw new Error("Oyun bulunamadı");
         }
 
@@ -278,28 +284,22 @@ async function joinGameTransaction(gameId, move, stake) {
         // Gas limitini ve fiyatını kontrol et
         const gasPrice = await provider.getGasPrice();
         
-        // joinGame fonksiyonunu sadece gameId ve move parametreleriyle çağır
-        const gasLimit = await contract.estimateGas.joinGame(
-            gameId,  // gameId
-            move,    // move
-            { value: stakeWei }  // transaction options
-        );
-        
-        console.log("Join Transaction detayları:", {
-            gameId,
-            move,
-            stakeWei: stakeWei.toString(),
-            gasLimit: gasLimit.toString(),
-            gasPrice: gasPrice.toString()
+        console.log("Join Transaction parametreleri:", {
+            gameId: gameId,
+            move: move,
+            value: stakeWei.toString()
         });
+
+        // Sabit gas limiti kullan
+        const gasLimit = 300000; // Sabit değer
 
         // Transaction'ı gönder
         const tx = await contract.joinGame(
-            gameId,  // gameId
-            move,    // move
-            {       // transaction options
+            ethers.BigNumber.from(gameId), // gameId'yi BigNumber'a çevir
+            move,
+            {
                 value: stakeWei,
-                gasLimit: gasLimit.mul(120).div(100), // %20 buffer
+                gasLimit: gasLimit,
                 gasPrice: gasPrice
             }
         );
@@ -337,13 +337,25 @@ async function loadGameDetails() {
         const gameId = document.getElementById('game-id').value;
         if (!gameId) return;
         
-        const gameInfo = await contract.getGameInfo(gameId);
-        const stake = weiToEth(gameInfo.stake);
+        // gameId'yi sayıya çevir ve kontrol et
+        const gameIdNum = parseInt(gameId);
+        if (isNaN(gameIdNum) || gameIdNum < 0) {
+            throw new Error("Geçersiz oyun ID");
+        }
+
+        const gameInfo = await contract.getGameInfo(gameIdNum);
+        if (!gameInfo || !gameInfo.creator || gameInfo.creator === ethers.constants.AddressZero) {
+            throw new Error("Oyun bulunamadı");
+        }
+
+        const stake = ethers.utils.formatEther(gameInfo.stake);
         
         // Bahis miktarını güncelle
         document.getElementById('join-stake').value = stake;
     } catch (error) {
         console.error("Oyun detayları yükleme hatası:", error);
+        document.getElementById('join-stake').value = "";
+        alert("Hata: " + error.message);
     }
 }
 
