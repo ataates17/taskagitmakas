@@ -202,6 +202,7 @@ async function createGameTransaction(move, stake) {
 
 // Oyuna katılma işleyicisi
 async function handleJoinGame() {
+    const resultDiv = document.getElementById('join-result');
     try {
         if (!signer) {
             alert("Lütfen önce cüzdanınızı bağlayın!");
@@ -222,15 +223,24 @@ async function handleJoinGame() {
         }
 
         // Loading mesajı göster
-        const resultDiv = document.getElementById('join-result');
-        resultDiv.innerHTML = "Oyuna katılınıyor...";
+        resultDiv.innerHTML = `
+            <div class="loading">
+                Transaction işleniyor...
+                <div class="spinner"></div>
+            </div>
+        `;
         resultDiv.className = "result pending";
 
         // Oyuna katıl
         const receipt = await joinGameTransaction(gameId, move, stake);
         
         // Başarı mesajı göster
-        resultDiv.innerHTML = `Oyuna başarıyla katıldınız! Transaction: ${receipt.transactionHash}`;
+        resultDiv.innerHTML = `
+            Oyuna başarıyla katıldınız!<br>
+            Transaction: <a href="https://sepolia.etherscan.io/tx/${receipt.transactionHash}" target="_blank">
+                ${receipt.transactionHash.substring(0, 10)}...
+            </a>
+        `;
         resultDiv.className = "result success";
         
         // Formu temizle
@@ -244,7 +254,6 @@ async function handleJoinGame() {
     } catch (error) {
         console.error("Oyuna katılma hatası:", error);
         // Hata mesajı göster
-        const resultDiv = document.getElementById('join-result');
         resultDiv.innerHTML = "Hata: " + error.message;
         resultDiv.className = "result error";
     }
@@ -278,22 +287,46 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
         }
 
+        // Gas fiyatını ve limitini hesapla
+        const gasPrice = await provider.getGasPrice();
+        const increasedGasPrice = gasPrice.mul(120).div(100); // %20 artış
+
+        // Gas limitini tahmin et
+        let estimatedGas;
+        try {
+            estimatedGas = await contract.estimateGas.joinGame(gameIdBN, move, {
+                value: stakeWei
+            });
+        } catch (error) {
+            console.error("Gas tahmini hatası:", error);
+            estimatedGas = ethers.BigNumber.from(300000); // Varsayılan değer
+        }
+
+        // Gas limitine %50 buffer ekle
+        const gasLimit = estimatedGas.mul(150).div(100);
+
         console.log("Join Transaction parametreleri:", {
             gameId: gameIdBN.toString(),
             move: move,
-            value: stakeWei.toString()
+            value: stakeWei.toString(),
+            gasLimit: gasLimit.toString(),
+            gasPrice: increasedGasPrice.toString()
         });
 
         // Transaction'ı gönder
         const tx = await contract.joinGame(gameIdBN, move, {
             value: stakeWei,
-            gasLimit: 300000
+            gasLimit: gasLimit,
+            gasPrice: increasedGasPrice,
+            nonce: await provider.getTransactionCount(userAddress, "latest")
         });
         
         console.log("Join Transaction gönderildi:", tx.hash);
         
-        const receipt = await tx.wait();
-        console.log("Join Transaction onaylandı:", receipt);
+        // Transaction'ı bekle
+        console.log("Transaction onayı bekleniyor...");
+        const receipt = await tx.wait(1); // 1 onay bekle
+        console.log("Transaction onaylandı:", receipt);
         
         if (receipt.status === 0) {
             throw new Error("Transaction başarısız oldu");
@@ -303,7 +336,26 @@ async function joinGameTransaction(gameId, move, stake) {
         
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
-        throw new Error(error.message || "Oyuna katılırken bir hata oluştu");
+        
+        // Hata mesajını daha anlaşılır hale getir
+        let errorMessage = "Oyuna katılırken bir hata oluştu";
+        
+        if (error.error && error.error.message) {
+            errorMessage = error.error.message;
+        } else if (error.message) {
+            if (error.message.includes("insufficient funds")) {
+                errorMessage = "Yetersiz bakiye";
+            } else if (error.message.includes("gas required exceeds")) {
+                errorMessage = "Gas limiti çok düşük, lütfen daha yüksek bir limit ile tekrar deneyin";
+            } else if (error.message.includes("nonce")) {
+                errorMessage = "Transaction sırası hatası, lütfen tekrar deneyin";
+            } else if (error.message.includes("execution reverted")) {
+                const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
+                errorMessage = revertReason;
+            }
+        }
+        
+        throw new Error(errorMessage);
     }
 }
 

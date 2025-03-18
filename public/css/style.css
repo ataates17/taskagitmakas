@@ -222,4 +222,29 @@ footer {
     .stats {
         grid-template-columns: 1fr;
     }
+}
+
+.loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.pending {
+    background-color: rgba(52, 152, 219, 0.2);
+    color: var(--primary-color);
 } 
