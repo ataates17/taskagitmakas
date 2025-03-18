@@ -207,7 +207,7 @@ async function handleJoinGame() {
     
     try {
         joinButton.disabled = true;
-        joinButton.textContent = 'İşlem Devam Ediyor...';
+        joinButton.textContent = 'İşlem Hazırlanıyor...';
         
         if (!signer) {
             alert("Lütfen önce cüzdanınızı bağlayın!");
@@ -227,24 +227,24 @@ async function handleJoinGame() {
             return;
         }
 
-        // Loading mesajı göster
         resultDiv.innerHTML = `
             <div class="loading">
-                Transaction işleniyor...
+                <p>Transaction hazırlanıyor...</p>
                 <div class="spinner"></div>
             </div>
         `;
         resultDiv.className = "result pending";
 
-        // Oyuna katıl
         const receipt = await joinGameTransaction(gameId, move, stake);
         
-        // Başarı mesajı göster
         resultDiv.innerHTML = `
-            Oyuna başarıyla katıldınız!<br>
-            Transaction: <a href="https://sepolia.etherscan.io/tx/${receipt.transactionHash}" target="_blank">
-                ${receipt.transactionHash.substring(0, 10)}...
-            </a>
+            <div class="success">
+                <p>Oyuna başarıyla katıldınız!</p>
+                <p>Transaction: <a href="https://sepolia.etherscan.io/tx/${receipt.transactionHash}" target="_blank">
+                    ${receipt.transactionHash.substring(0, 10)}...
+                </a></p>
+                <p>Gas kullanımı: ${receipt.gasUsed.toString()}</p>
+            </div>
         `;
         resultDiv.className = "result success";
         
@@ -264,12 +264,15 @@ async function handleJoinGame() {
         }, 3000);
 
     } catch (error) {
-        // Hata durumunda
         joinButton.disabled = false;
         joinButton.textContent = 'Oyuna Katıl';
-        console.error("Oyuna katılma hatası:", error);
-        // Hata mesajı göster
-        resultDiv.innerHTML = "Hata: " + error.message;
+        
+        resultDiv.innerHTML = `
+            <div class="error">
+                <p>Hata: ${error.message}</p>
+                <p>Lütfen MetaMask ayarlarınızı kontrol edin ve tekrar deneyin.</p>
+            </div>
+        `;
         resultDiv.className = "result error";
     }
 }
@@ -345,43 +348,49 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error("Yetersiz bakiye");
         }
 
-        // Gas fiyatını hesapla
+        // Gas tahminini dene
+        let estimatedGas;
+        try {
+            estimatedGas = await contract.estimateGas.joinGame(gameIdBN, move, {
+                from: userAddress,
+                value: stakeWei
+            });
+            console.log("Tahmini gas:", estimatedGas.toString());
+        } catch (error) {
+            console.error("Gas tahmini hatası:", error);
+            throw new Error("İşlem başarısız olabilir: " + (error.message || "Bilinmeyen hata"));
+        }
+
+        // Gas fiyatını al ve artır
         const gasPrice = await provider.getGasPrice();
-        const increasedGasPrice = gasPrice.mul(120).div(100); // %20 artış
+        const increasedGasPrice = gasPrice.mul(150).div(100); // %50 artış
 
-        // Gas limitini tahmin et
-        const gasLimit = ethers.BigNumber.from(300000);
-        const estimatedGasCost = gasLimit.mul(increasedGasPrice);
+        // Gas limitini artır
+        const gasLimit = estimatedGas.mul(130).div(100); // %30 buffer
 
-        // Toplam maliyet kontrolü (stake + gas)
-        const totalCost = stakeWei.add(estimatedGasCost);
-        if (balance.lt(totalCost)) {
-            throw new Error("Gas maliyeti için yetersiz bakiye");
-        }
-
-        // Nonce'u al ve kontrol et
-        const currentNonce = await provider.getTransactionCount(userAddress, "latest");
-        const pendingNonce = await provider.getTransactionCount(userAddress, "pending");
+        // Toplam maliyet kontrolü
+        const gasCost = gasLimit.mul(increasedGasPrice);
+        const totalCost = stakeWei.add(gasCost);
         
-        if (currentNonce !== pendingNonce) {
-            throw new Error("Bekleyen işleminiz var, lütfen tamamlanmasını bekleyin");
+        if (balance.lt(totalCost)) {
+            const requiredEth = ethers.utils.formatEther(totalCost);
+            throw new Error(`Toplam maliyet için yetersiz bakiye. Gereken: ${requiredEth} ETH`);
         }
 
-        // Transaction parametrelerini hazırla
+        // Transaction parametreleri
         const txParams = {
             value: stakeWei,
             gasLimit: gasLimit,
-            gasPrice: increasedGasPrice,
-            nonce: currentNonce
+            gasPrice: increasedGasPrice
         };
 
-        console.log("Transaction parametreleri:", {
+        console.log("Transaction detayları:", {
             gameId: gameIdBN.toString(),
             move: move,
             value: ethers.utils.formatEther(stakeWei),
-            nonce: currentNonce,
             gasLimit: gasLimit.toString(),
-            gasPrice: increasedGasPrice.toString()
+            gasPrice: ethers.utils.formatUnits(increasedGasPrice, "gwei") + " gwei",
+            estimatedCost: ethers.utils.formatEther(totalCost) + " ETH"
         });
 
         // Transaction'ı gönder
@@ -390,7 +399,7 @@ async function joinGameTransaction(gameId, move, stake) {
 
         // Transaction'ı bekle
         console.log("Transaction onayı bekleniyor...");
-        const receipt = await tx.wait(2); // 2 onay bekle
+        const receipt = await tx.wait(1);
         console.log("Transaction onaylandı:", receipt);
 
         if (receipt.status === 0) {
@@ -401,28 +410,23 @@ async function joinGameTransaction(gameId, move, stake) {
 
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
-
+        
         let errorMessage = "Oyuna katılırken bir hata oluştu";
-
+        
         if (error.error && error.error.message) {
             errorMessage = error.error.message;
         } else if (error.message) {
             if (error.message.includes("insufficient funds")) {
                 errorMessage = "Yetersiz bakiye";
             } else if (error.message.includes("gas required exceeds")) {
-                errorMessage = "Gas limiti çok düşük";
+                errorMessage = "Gas limiti çok yüksek";
             } else if (error.message.includes("nonce")) {
                 errorMessage = "Lütfen bekleyen işlemlerin tamamlanmasını bekleyin";
-            } else if (error.message.includes("arithmetic")) {
-                errorMessage = "Geçersiz oyun ID";
-            } else if (error.message.includes("execution reverted")) {
-                const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
-                errorMessage = revertReason;
             } else {
                 errorMessage = error.message;
             }
         }
-
+        
         throw new Error(errorMessage);
     }
 }
