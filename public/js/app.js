@@ -102,10 +102,10 @@ async function handleCreateGame() {
         resultDiv.className = "result pending";
 
         // Oyun oluştur
-        await createGameTransaction(move, stake);
+        const receipt = await createGameTransaction(move, stake);
         
         // Başarı mesajı göster
-        resultDiv.innerHTML = "Oyun başarıyla oluşturuldu!";
+        resultDiv.innerHTML = `Oyun başarıyla oluşturuldu! Transaction: ${receipt.transactionHash}`;
         resultDiv.className = "result success";
         
         // Formu temizle
@@ -131,22 +131,72 @@ async function createGameTransaction(move, stake) {
             throw new Error("Geçersiz hamle!");
         }
 
+        // Minimum stake kontrolü
+        const minStake = await contract.MIN_STAKE();
+        const stakeWei = ethers.utils.parseEther(stake.toString());
+        if (stakeWei.lt(minStake)) {
+            throw new Error(`Minimum bahis miktarı: ${ethers.utils.formatEther(minStake)} ETH`);
+        }
+
+        // Aktif oyun sayısı kontrolü
+        const activeGames = await contract.getActiveGames(userAddress);
+        const maxGames = await contract.MAX_GAMES_PER_USER();
+        if (activeGames.gte(maxGames)) {
+            throw new Error(`Maksimum ${maxGames} aktif oyununuz olabilir`);
+        }
+
+        // Zaman kontrolü
+        const nextAllowedTime = await contract.getNextAllowedGameTime(userAddress);
+        if (nextAllowedTime.gt(0)) {
+            const waitTime = Math.ceil(nextAllowedTime.toNumber() - Date.now() / 1000);
+            throw new Error(`Lütfen ${waitTime} saniye bekleyin`);
+        }
+
         // Gas limitini ve fiyatını kontrol et
         const gasPrice = await provider.getGasPrice();
+        const gasLimit = await contract.estimateGas.createGame(move, {
+            value: stakeWei
+        });
         
+        console.log("Transaction detayları:", {
+            move,
+            stakeWei: stakeWei.toString(),
+            gasLimit: gasLimit.toString(),
+            gasPrice: gasPrice.toString()
+        });
+
         // Move değerini uint8 olarak gönder
         const tx = await contract.createGame(move, {
-            value: ethers.utils.parseEther(stake.toString()),
-            gasLimit: 300000,
+            value: stakeWei,
+            gasLimit: gasLimit.mul(120).div(100), // %20 buffer
             gasPrice: gasPrice
         });
         
+        console.log("Transaction gönderildi:", tx.hash);
+        
         const receipt = await tx.wait();
-        console.log("Oyun başarıyla oluşturuldu! Transaction:", receipt.transactionHash);
+        console.log("Transaction onaylandı:", receipt);
+        
+        if (receipt.status === 0) {
+            throw new Error("Transaction başarısız oldu");
+        }
+        
+        return receipt;
         
     } catch (error) {
-        console.error("Transaction hatası:", error);
-        throw new Error(error.message || "Oyun oluşturulurken bir hata oluştu");
+        console.error("Transaction detaylı hata:", error);
+        
+        // Kontrat hata mesajını çıkar
+        let errorMessage = "Oyun oluşturulurken bir hata oluştu";
+        if (error.error && error.error.message) {
+            errorMessage = error.error.message;
+        } else if (error.message && error.message.includes("execution reverted")) {
+            // Revert sebebini bul
+            const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
+            errorMessage = revertReason;
+        }
+        
+        throw new Error(errorMessage);
     }
 }
 
