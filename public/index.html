@@ -20,19 +20,17 @@
         <main>
             <section class="card">
                 <h2>Yeni Oyun Oluştur</h2>
-                <div class="form-group">
-                    <label for="move-select">Hamlenizi Seçin:</label>
-                    <select id="move-select" class="form-control">
+                <div class="game-creation">
+                    <h3>Yeni Oyun Oluştur</h3>
+                    <select id="create-move">
+                        <option value="">Hamle Seçin</option>
                         <option value="1">Taş</option>
                         <option value="2">Kağıt</option>
                         <option value="3">Makas</option>
                     </select>
+                    <input type="number" id="create-stake" placeholder="Bahis Miktarı (ETH)" step="0.01" min="0.0001">
+                    <button id="create-game">Oyun Oluştur</button>
                 </div>
-                <div class="form-group">
-                    <label for="stake-amount">Bahis Miktarı (ETH):</label>
-                    <input type="number" id="stake-amount" class="form-control" min="0.0001" step="0.0001" value="0.001">
-                </div>
-                <button id="create-game" class="btn primary">Oyun Oluştur</button>
                 <div id="create-result" class="result"></div>
             </section>
 

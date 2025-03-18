@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('connect-wallet').addEventListener('click', connectWallet);
     
     // Oyun oluştur butonuna tıklandığında
-    document.getElementById('create-game').addEventListener('click', createGame);
+    document.getElementById('create-game').addEventListener('click', handleCreateGame);
     
     // Oyunları yenile butonuna tıklandığında
     document.getElementById('refresh-games').addEventListener('click', loadGames);
@@ -76,22 +76,60 @@ async function connectWallet() {
     }
 }
 
-// Oyun oluştur
-async function createGame(move, stake) {
+// Oyun oluşturma işleyicisi
+async function handleCreateGame() {
     try {
-        const signer = provider.getSigner();
-        const contract = new ethers.Contract(contractAddress, contractABI, signer);
+        if (!signer) {
+            alert("Lütfen önce cüzdanınızı bağlayın!");
+            return;
+        }
+
+        // Form değerlerini al
+        const moveSelect = document.getElementById('create-move');
+        const stakeInput = document.getElementById('create-stake');
         
-        // Direkt olarak hamleyi gönder
+        const move = parseInt(moveSelect.value);
+        const stake = stakeInput.value;
+
+        if (!move || !stake) {
+            alert("Lütfen hamle ve bahis miktarını girin!");
+            return;
+        }
+
+        // Oyun oluştur
+        await createGameTransaction(move, stake);
+        
+        // Formu temizle
+        moveSelect.value = "";
+        stakeInput.value = "";
+        
+        // Oyun listesini güncelle
+        await loadGames();
+        
+    } catch (error) {
+        console.error("Oyun oluşturma hatası:", error);
+        alert("Oyun oluşturulurken bir hata oluştu: " + error.message);
+    }
+}
+
+// Oyun oluşturma transaction'ı
+async function createGameTransaction(move, stake) {
+    try {
+        // Gas limitini ve fiyatını kontrol et
+        const gasPrice = await provider.getGasPrice();
+        
         const tx = await contract.createGame(move, {
-            value: ethers.utils.parseEther(stake.toString())
+            value: ethers.utils.parseEther(stake.toString()),
+            gasLimit: 300000, // Sabit gas limiti
+            gasPrice: gasPrice
         });
         
         await tx.wait();
         console.log("Oyun başarıyla oluşturuldu!");
-        updateGameList();
+        
     } catch (error) {
-        console.error("Oyun oluşturma hatası:", error);
+        console.error("Transaction hatası:", error);
+        throw error; // Hatayı yukarı ilet
     }
 }
 
