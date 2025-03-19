@@ -1260,22 +1260,16 @@ async function getFirebaseGames() {
         // Önce ACTIVE oyunları getir
         const activeGamesSnapshot = await db.collection('games')
             .where('state', '==', 'ACTIVE')
-            .orderBy('createdAt', 'desc')
-            .limit(20)
             .get();
         
         // Sonra JOINED oyunları getir
         const joinedGamesSnapshot = await db.collection('games')
             .where('state', '==', 'JOINED')
-            .orderBy('createdAt', 'desc')
-            .limit(20)
             .get();
         
         // Son olarak FINISHED oyunları getir
         const finishedGamesSnapshot = await db.collection('games')
             .where('state', '==', 'FINISHED')
-            .orderBy('createdAt', 'desc')
-            .limit(20)
             .get();
         
         // Tüm oyunları birleştir
@@ -1302,7 +1296,15 @@ async function getFirebaseGames() {
             });
         });
         
-        return games;
+        // Bellek içinde sıralama yap
+        games.sort((a, b) => {
+            const dateA = a.createdAt ? a.createdAt.toDate() : new Date(0);
+            const dateB = b.createdAt ? b.createdAt.toDate() : new Date(0);
+            return dateB - dateA; // Azalan sıralama (en yeniden en eskiye)
+        });
+        
+        // İlk 20 oyunu al
+        return games.slice(0, 20);
     } catch (error) {
         console.error("Oyun listesi hatası:", error);
         return [];
