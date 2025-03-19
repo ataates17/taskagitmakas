@@ -135,10 +135,18 @@ async function createGameTransaction(move, stake) {
             stakeWei: stakeWei.toString()
         });
 
+        // Kontrat fonksiyonunu debug edin
+        console.log("Kontrat fonksiyonları:", Object.keys(contract.functions));
+
+        // Commit hash ve salt değerlerini kontrol edin
+        console.log("Commit Hash:", commitHash);
+        console.log("Salt:", salt);
+        console.log("Salt Uzunluğu:", salt.length);
+
         // Commit hash'i ve salt değerini gönder
         const tx = await contract.createGame(commitHash, salt, {
             value: stakeWei,
-            gasLimit: 200000
+            gasLimit: 500000
         });
 
         // Transaction'ı bekle
@@ -148,6 +156,29 @@ async function createGameTransaction(move, stake) {
         return receipt;
     } catch (error) {
         console.error("Oyun oluşturma hatası:", error);
+        
+        // Hata mesajını daha detaylı göster
+        let errorMessage = "Bilinmeyen hata";
+        
+        if (error.reason) {
+            errorMessage = error.reason;
+        } else if (error.message) {
+            errorMessage = error.message;
+            
+            // Revert sebebini çıkarmaya çalış
+            const revertMatch = error.message.match(/reverted with reason string '([^']+)'/);
+            if (revertMatch && revertMatch[1]) {
+                errorMessage = revertMatch[1];
+            }
+        }
+        
+        // Hata mesajını göster
+        const resultDiv = document.getElementById('create-result');
+        if (resultDiv) {
+            resultDiv.innerHTML = "Hata: " + errorMessage;
+            resultDiv.className = "result error";
+        }
+        
         throw error;
     }
 }
@@ -158,7 +189,7 @@ function generateRandomSalt() {
     let salt = '';
     
     // Daha uzun ve karmaşık bir salt değeri oluştur
-    const length = 48; // 48 karakter uzunluğunda
+    const length = 32; // 32 karakter uzunluğunda
     
     // Crypto API kullanarak daha güvenli rastgele değerler üret
     const randomValues = new Uint8Array(length);
@@ -184,11 +215,8 @@ function generateRandomSalt() {
         salt += userAddress.substring(2, 10);
     }
     
-    // Tarayıcı parmak izi ekleyerek benzersizliği artır
-    salt += navigator.userAgent;
-    
-    // Son olarak hash'leyerek sabit uzunlukta bir değer elde et
-    return ethers.utils.id(salt).substring(2, 66);
+    // Daha kısa bir salt değeri döndür (kontrat 32 karakter bekliyor olabilir)
+    return salt.substring(0, 32);
 }
 
 // Oyuna katılma işleyicisi
