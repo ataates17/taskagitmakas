@@ -335,10 +335,10 @@ async function loadPlatformStats() {
     }
 }
 
-// Oyunları yükle
+// Oyunları yükle ve kategorilere ayır
 async function loadGames() {
     try {
-        if (!contract) return;
+        if (!contract || !userAddress) return;
         
         const gamesList = document.getElementById('games-list');
         gamesList.innerHTML = '<p>Oyunlar yükleniyor...</p>';
@@ -347,9 +347,12 @@ async function loadGames() {
         const gameCount = await contract.gameCount();
         console.log("Toplam oyun sayısı:", gameCount.toString());
         
-        // Son 10 oyunu al
-        const games = [];
-        const startIndex = Math.max(0, gameCount.toNumber() - 10);
+        // Son 30 oyunu kontrol et
+        const openGames = [];
+        const activeGames = [];
+        const finishedGames = [];
+        
+        const startIndex = Math.max(0, gameCount.toNumber() - 30);
         
         for (let i = gameCount.toNumber() - 1; i >= startIndex; i--) {
             try {
@@ -357,30 +360,199 @@ async function loadGames() {
                 const gameInfo = await contract.getGameInfo(i);
                 const gameState = await contract.getGameState(i);
                 
-                // Oyun geçerli mi kontrol et
-                const isValid = await contract.isValidGame(i);
-                if (!isValid && gameState.state !== 3) continue; // Bitmiş oyunları göster
-                
-                games.push({
+                const gameData = {
                     id: i,
                     creator: gameInfo.creator,
                     challenger: gameInfo.challenger,
                     stake: ethers.utils.formatEther(gameInfo.stake),
                     state: gameInfo.state,
-                    winner: gameInfo.winner
-                });
+                    winner: gameInfo.winner,
+                    isUserGame: gameInfo.creator === userAddress || gameInfo.challenger === userAddress
+                };
+                
+                // Oyunları kategorilere ayır
+                if (gameInfo.state === 0) { // Created
+                    openGames.push(gameData);
+                } else if (gameInfo.creator === userAddress || gameInfo.challenger === userAddress) {
+                    if (gameInfo.state === 3) { // Finished
+                        finishedGames.push(gameData);
+                    } else { // Joined or Revealed
+                        activeGames.push(gameData);
+                    }
+                }
             } catch (error) {
                 console.error(`Oyun ${i} yüklenirken hata:`, error);
             }
         }
         
         // Oyunları render et
-        renderGames(games);
+        renderGameTabs(openGames, activeGames, finishedGames);
         
     } catch (error) {
         console.error("Oyunları yükleme hatası:", error);
         document.getElementById('games-list').innerHTML = '<p>Oyunlar yüklenirken hata oluştu.</p>';
     }
+}
+
+// Oyunları sekmelere ayırarak render et
+function renderGameTabs(openGames, activeGames, finishedGames) {
+    const gamesList = document.getElementById('games-list');
+    gamesList.innerHTML = '';
+    
+    // Sekme başlıkları
+    const tabsContainer = document.createElement('div');
+    tabsContainer.className = 'tabs-container';
+    
+    tabsContainer.innerHTML = `
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="open-games">Açık Oyunlar (${openGames.length})</button>
+            <button class="tab-btn" data-tab="active-games">Aktif Oyunlarım (${activeGames.length})</button>
+            <button class="tab-btn" data-tab="finished-games">Tamamlanan Oyunlarım (${finishedGames.length})</button>
+        </div>
+    `;
+    
+    // Sekme içerikleri
+    const tabContents = document.createElement('div');
+    tabContents.className = 'tab-contents';
+    
+    // Açık oyunlar sekmesi
+    const openGamesTab = document.createElement('div');
+    openGamesTab.className = 'tab-content active';
+    openGamesTab.id = 'open-games';
+    openGamesTab.appendChild(renderGamesTable(openGames, 'open'));
+    
+    // Aktif oyunlar sekmesi
+    const activeGamesTab = document.createElement('div');
+    activeGamesTab.className = 'tab-content';
+    activeGamesTab.id = 'active-games';
+    activeGamesTab.appendChild(renderGamesTable(activeGames, 'active'));
+    
+    // Tamamlanan oyunlar sekmesi
+    const finishedGamesTab = document.createElement('div');
+    finishedGamesTab.className = 'tab-content';
+    finishedGamesTab.id = 'finished-games';
+    finishedGamesTab.appendChild(renderGamesTable(finishedGames, 'finished'));
+    
+    // Sekme içeriklerini ekle
+    tabContents.appendChild(openGamesTab);
+    tabContents.appendChild(activeGamesTab);
+    tabContents.appendChild(finishedGamesTab);
+    
+    // Sekmeleri ve içerikleri ana container'a ekle
+    gamesList.appendChild(tabsContainer);
+    gamesList.appendChild(tabContents);
+    
+    // Sekme değiştirme işlevselliği
+    const tabButtons = tabsContainer.querySelectorAll('.tab-btn');
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Aktif sekme butonunu değiştir
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            // Aktif içeriği değiştir
+            const tabId = button.getAttribute('data-tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => content.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+        });
+    });
+}
+
+// Oyun tablosunu oluştur
+function renderGamesTable(games, tableType) {
+    if (games.length === 0) {
+        const emptyMessage = document.createElement('p');
+        
+        if (tableType === 'open') {
+            emptyMessage.textContent = 'Katılabileceğiniz açık oyun bulunmuyor.';
+        } else if (tableType === 'active') {
+            emptyMessage.textContent = 'Aktif oyununuz bulunmuyor.';
+        } else {
+            emptyMessage.textContent = 'Tamamlanan oyununuz bulunmuyor.';
+        }
+        
+        return emptyMessage;
+    }
+    
+    const table = document.createElement('table');
+    table.className = 'games-table';
+    
+    // Tablo başlığı
+    const thead = document.createElement('thead');
+    thead.innerHTML = `
+        <tr>
+            <th>ID</th>
+            <th>Oluşturan</th>
+            <th>Katılan</th>
+            <th>Bahis</th>
+            <th>Durum</th>
+            <th>İşlem</th>
+        </tr>
+    `;
+    table.appendChild(thead);
+    
+    // Tablo içeriği
+    const tbody = document.createElement('tbody');
+    games.forEach(game => {
+        const tr = document.createElement('tr');
+        
+        // Kullanıcının kendi oyunlarını vurgula
+        if (game.isUserGame) {
+            tr.className = 'user-game';
+        }
+        
+        // Durum metni ve butonlar
+        let stateText = '';
+        let actionButton = '';
+        
+        switch(game.state) {
+            case 0: // Created
+                stateText = 'Oluşturuldu';
+                if (game.creator === userAddress) {
+                    actionButton = `<button class="btn small" onclick="cancelGame(${game.id})">İptal Et</button>`;
+                } else {
+                    actionButton = `<button class="btn small primary" onclick="prepareJoinGame(${game.id})">Katıl</button>`;
+                }
+                break;
+            case 1: // Joined
+                stateText = 'Katılındı';
+                if (game.creator === userAddress) {
+                    actionButton = `<button class="btn small primary" onclick="handleRevealMove(${game.id})">Reveal</button>`;
+                } else if (game.challenger === userAddress) {
+                    stateText += ' (Reveal bekleniyor)';
+                }
+                break;
+            case 2: // Revealed
+                stateText = 'Açıklandı';
+                break;
+            case 3: // Finished
+                stateText = 'Tamamlandı';
+                if (game.winner === userAddress) {
+                    stateText += ' <span class="win-badge">Kazandınız!</span>';
+                } else if (game.winner !== ethers.constants.AddressZero && 
+                          (game.creator === userAddress || game.challenger === userAddress)) {
+                    stateText += ' <span class="lose-badge">Kaybettiniz</span>';
+                } else if (game.winner === ethers.constants.AddressZero) {
+                    stateText += ' <span class="draw-badge">Berabere</span>';
+                }
+                break;
+        }
+        
+        tr.innerHTML = `
+            <td>${game.id}</td>
+            <td>${shortenAddress(game.creator)}${game.creator === userAddress ? ' <span class="user-badge">Siz</span>' : ''}</td>
+            <td>${game.challenger ? shortenAddress(game.challenger) + (game.challenger === userAddress ? ' <span class="user-badge">Siz</span>' : '') : '-'}</td>
+            <td>${game.stake} ETH</td>
+            <td>${stateText}</td>
+            <td>${actionButton}</td>
+        `;
+        
+        tbody.appendChild(tr);
+    });
+    
+    table.appendChild(tbody);
+    return table;
 }
 
 // Oyuna katılmak için hazırlık
@@ -764,81 +936,6 @@ async function revealMove(gameId) {
         console.error("Reveal hatası:", error);
         throw error;
     }
-}
-
-// Oyun listesine reveal butonu ekle
-function renderGames(games) {
-    const gamesList = document.getElementById('games-list');
-    gamesList.innerHTML = '';
-    
-    if (games.length === 0) {
-        gamesList.innerHTML = '<p>Aktif oyun bulunamadı.</p>';
-        return;
-    }
-    
-    const table = document.createElement('table');
-    table.className = 'games-table';
-    
-    // Tablo başlığı
-    const thead = document.createElement('thead');
-    thead.innerHTML = `
-        <tr>
-            <th>ID</th>
-            <th>Oluşturan</th>
-            <th>Katılan</th>
-            <th>Bahis</th>
-            <th>Durum</th>
-            <th>İşlem</th>
-        </tr>
-    `;
-    table.appendChild(thead);
-    
-    // Tablo içeriği
-    const tbody = document.createElement('tbody');
-    games.forEach(game => {
-        const tr = document.createElement('tr');
-        
-        // Durum metni
-        let stateText = '';
-        let actionButton = '';
-        
-        switch(game.state) {
-            case 0: // Created
-                stateText = 'Oluşturuldu';
-                if (game.creator === userAddress) {
-                    actionButton = `<button class="btn small" onclick="cancelGame(${game.id})">İptal Et</button>`;
-                } else {
-                    actionButton = `<button class="btn small primary" onclick="prepareJoinGame(${game.id})">Katıl</button>`;
-                }
-                break;
-            case 1: // Joined
-                stateText = 'Katılındı';
-                if (game.creator === userAddress) {
-                    actionButton = `<button class="btn small primary" onclick="handleRevealMove(${game.id})">Reveal</button>`;
-                }
-                break;
-            case 2: // Revealed
-                stateText = 'Açıklandı';
-                break;
-            case 3: // Finished
-                stateText = 'Tamamlandı';
-                break;
-        }
-        
-        tr.innerHTML = `
-            <td>${game.id}</td>
-            <td>${shortenAddress(game.creator)}</td>
-            <td>${game.challenger ? shortenAddress(game.challenger) : '-'}</td>
-            <td>${game.stake} ETH</td>
-            <td>${stateText}</td>
-            <td>${actionButton}</td>
-        `;
-        
-        tbody.appendChild(tr);
-    });
-    
-    table.appendChild(tbody);
-    gamesList.appendChild(table);
 }
 
 // Reveal butonu için handler
