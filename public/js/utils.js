@@ -42,22 +42,23 @@ function timestampToDate(timestamp) {
     return new Date(timestamp * 1000).toLocaleString();
 }
 
-// Rastgele salt değeri oluştur
-function generateRandomSalt() {
-    const array = new Uint8Array(32);
-    window.crypto.getRandomValues(array);
-    return '0x' + Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Hamle ve salt değerinden commitment oluştur
+// Commitment hash oluştur
 async function createCommitment(move, salt) {
-    // ethers.js ile hash oluştur
-    const encoded = ethers.utils.defaultAbiCoder.encode(
-        ['uint8', 'bytes32'],
+    // Ethereum keccak256 hash fonksiyonu
+    return ethers.utils.solidityKeccak256(
+        ["uint", "string"],
         [move, salt]
     );
-    const commitment = ethers.utils.keccak256(encoded);
-    return commitment;
+}
+
+// Rastgele salt oluştur
+function generateRandomSalt() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let salt = '';
+    for (let i = 0; i < 32; i++) {
+        salt += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return salt;
 }
 
 // Sonuç mesajını göster
