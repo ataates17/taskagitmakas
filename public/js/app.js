@@ -648,7 +648,7 @@ async function checkGasPrices() {
     console.log("Gas Fiyatları:", {
         baseFee: ethers.utils.formatUnits(baseFee, "gwei") + " gwei",
         currentPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " gwei",
-        maxFeePerGas: ethers.utils.formatUnits(baseFee.mul(2), "gwei") + " gwei"
+        maxFeePerGas: ethers.utils.formatUnits(baseFee.mul(2), "gwei")
     });
 
     return {
@@ -1203,5 +1203,17 @@ function showNotification(message, type = "info") {
 document.getElementById('join-game').addEventListener('click', async () => {
     const gameId = parseInt(document.getElementById('game-id').value);
     const move = parseInt(document.getElementById('join-move').value);
-    await joinGameTransaction(gameId, move);
+    
+    // Butonun birden fazla kez tıklanmasını önlemek için devre dışı bırak
+    const joinButton = document.getElementById('join-game');
+    joinButton.disabled = true;
+    
+    try {
+        await joinGameTransaction(gameId, move);
+    } catch (error) {
+        console.error("Hata:", error);
+    } finally {
+        // İşlem tamamlandıktan sonra butonu tekrar etkinleştir
+        joinButton.disabled = false;
+    }
 }); 
