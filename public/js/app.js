@@ -80,52 +80,9 @@ async function connectWallet() {
     }
 }
 
-// Oyun oluşturma işleyicisi
+// Oyun oluşturma işleyicisi - artık kullanılmıyor, popup kullanılıyor
 async function handleCreateGame() {
-    try {
-        if (!signer) {
-            alert("Lütfen önce cüzdanınızı bağlayın!");
-            return;
-        }
-
-        // Form değerlerini al
-        const moveSelect = document.getElementById('create-move');
-        const stakeInput = document.getElementById('create-stake');
-        
-        const move = parseInt(moveSelect.value);
-        const stake = stakeInput.value;
-
-        if (!move || !stake) {
-            alert("Lütfen hamle ve bahis miktarını girin!");
-            return;
-        }
-
-        // Loading mesajı göster
-        const resultDiv = document.getElementById('create-result');
-        resultDiv.innerHTML = "Oyun oluşturuluyor...";
-        resultDiv.className = "result pending";
-
-        // Oyun oluştur
-        const receipt = await createGameTransaction(move, stake);
-        
-        // Başarı mesajı göster
-        resultDiv.innerHTML = `Oyun başarıyla oluşturuldu! Transaction: ${receipt.transactionHash}`;
-        resultDiv.className = "result success";
-        
-        // Formu temizle
-        moveSelect.value = "";
-        stakeInput.value = "";
-        
-        // Oyun listesini güncelle
-        await loadGames();
-        
-    } catch (error) {
-        console.error("Oyun oluşturma hatası:", error);
-        // Hata mesajı göster
-        const resultDiv = document.getElementById('create-result');
-        resultDiv.innerHTML = "Hata: " + error.message;
-        resultDiv.className = "result error";
-    }
+    openCreateGameModal();
 }
 
 // Oyun oluşturma transaction'ı
