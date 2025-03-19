@@ -122,9 +122,9 @@ async function createGameTransaction(move, stake) {
         // Rastgele bir salt değeri oluştur
         const salt = generateRandomSalt();
         
-        // Commit hash'i oluştur
+        // Commit hash'i oluştur - uint8 yerine uint olarak deneyelim
         const commitHash = ethers.utils.solidityKeccak256(
-            ["uint8", "string"],
+            ["uint", "string"],
             [move, salt]
         );
         
@@ -135,20 +135,18 @@ async function createGameTransaction(move, stake) {
             stakeWei: stakeWei.toString()
         });
 
-        // Kontrat fonksiyonunu debug edin
-        console.log("Kontrat fonksiyonları:", Object.keys(contract.functions));
+        // Kontrat fonksiyonlarını doğrula
+        await validateContractFunctions();
 
-        // Commit hash ve salt değerlerini kontrol edin
-        console.log("Commit Hash:", commitHash);
-        console.log("Salt:", salt);
-        console.log("Salt Uzunluğu:", salt.length);
-
-        // Commit hash'i ve salt değerini gönder
+        // Commit hash'i ve salt değerini gönder - farklı parametre sırası deneyelim
         const tx = await contract.createGame(commitHash, salt, {
             value: stakeWei,
             gasLimit: 500000
         });
 
+        console.log("Transaction gönderildi:", tx.hash);
+        console.log("Transaction onayı bekleniyor...");
+        
         // Transaction'ı bekle
         const receipt = await tx.wait();
         console.log("Transaction receipt:", receipt);
@@ -185,38 +183,23 @@ async function createGameTransaction(move, stake) {
 
 // Daha güvenli rastgele salt değeri oluştur
 function generateRandomSalt() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
-    let salt = '';
-    
-    // Daha uzun ve karmaşık bir salt değeri oluştur
-    const length = 32; // 32 karakter uzunluğunda
-    
-    // Crypto API kullanarak daha güvenli rastgele değerler üret
-    const randomValues = new Uint8Array(length);
+    // Basit bir salt değeri oluştur
+    const randomBytes = new Uint8Array(16);
     if (window.crypto && window.crypto.getRandomValues) {
-        window.crypto.getRandomValues(randomValues);
+        window.crypto.getRandomValues(randomBytes);
     } else {
-        // Fallback: Daha az güvenli ama yine de kullanılabilir
-        for (let i = 0; i < length; i++) {
-            randomValues[i] = Math.floor(Math.random() * 256);
+        for (let i = 0; i < 16; i++) {
+            randomBytes[i] = Math.floor(Math.random() * 256);
         }
     }
     
-    // Rastgele değerleri karakterlere dönüştür
-    for (let i = 0; i < length; i++) {
-        salt += chars.charAt(randomValues[i] % chars.length);
+    // Hex string'e dönüştür
+    let salt = '';
+    for (let i = 0; i < randomBytes.length; i++) {
+        salt += randomBytes[i].toString(16).padStart(2, '0');
     }
     
-    // Zaman damgası ekleyerek benzersizliği artır
-    salt += Date.now().toString();
-    
-    // Kullanıcı adresini ekleyerek benzersizliği artır
-    if (userAddress) {
-        salt += userAddress.substring(2, 10);
-    }
-    
-    // Daha kısa bir salt değeri döndür (kontrat 32 karakter bekliyor olabilir)
-    return salt.substring(0, 32);
+    return salt;
 }
 
 // Oyuna katılma işleyicisi
@@ -721,147 +704,70 @@ async function validateTransaction(value) {
 // Oyuna katılma transaction'ı
 async function joinGameTransaction(gameId, move, stake) {
     try {
-        // Move enum kontrolü (1: Rock, 2: Paper, 3: Scissors)
-        const moveMap = {
-            1: "Rock",
-            2: "Paper", 
-            3: "Scissors"
-        };
-
-        if (!moveMap[move]) {
-            throw new Error("Geçersiz hamle! Lütfen Taş (1), Kağıt (2) veya Makas (3) seçin");
+        if (!gameId || gameId < 0) {
+            throw new Error("Geçersiz oyun ID!");
         }
-
-        // gameId'yi sayı olarak kontrol et ve BigNumber'a çevir
-        const gameIdNum = parseInt(gameId);
-        if (isNaN(gameIdNum) || gameIdNum < 0) {
-            throw new Error("Geçersiz oyun ID");
-        }
-
-        // Move'u uint8 olarak gönder
-        const moveValue = ethers.BigNumber.from(move);
         
-        // Stake'i BigNumber'a çevir
+        if (!move || move < 1 || move > 3) {
+            throw new Error("Geçersiz hamle!");
+        }
+        
+        // Oyun bilgilerini al
+        const gameInfo = await contract.getGameInfo(gameId);
         const stakeWei = ethers.utils.parseEther(stake.toString());
-
-        // Oyun bilgilerini kontrol et
-        const gameInfo = await contract.getGameInfo(gameIdNum);
-        console.log("Oyun bilgileri:", {
-            creator: gameInfo.creator,
-            challenger: gameInfo.challenger,
-            stake: ethers.utils.formatEther(gameInfo.stake),
-            state: gameInfo.state
-        });
-
-        if (gameInfo.creator === ethers.constants.AddressZero) {
-            throw new Error("Oyun bulunamadı");
-        }
-
-        if (gameInfo.creator === userAddress) {
-            throw new Error("Kendi oyununuza katılamazsınız");
-        }
-
-        // Oyun durumunu kontrol et
-        const gameState = await contract.getGameState(gameIdNum);
-        console.log("Oyun durumu:", gameState);
-
-        if (gameState.state !== 0) {
-            throw new Error("Bu oyuna katılınamaz");
-        }
-
-        // Stake kontrolü
-        if (!stakeWei.eq(gameInfo.stake)) {
-            throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
-        }
-
-        // Bakiye kontrolü
-        const balance = await provider.getBalance(userAddress);
-        if (balance.lt(stakeWei)) {
-            throw new Error("Yetersiz bakiye");
-        }
-
-        // Transaction'ı göndermeden önce son kontroller
-        const gameCount = await contract.gameCount();
-        console.log("Toplam oyun sayısı:", gameCount.toString());
-
-        // Oyun geçerliliğini kontrol et
-        const isValid = await contract.isValidGame(gameIdNum);
-        if (!isValid) {
-            throw new Error("Bu oyun artık geçerli değil");
-        }
-
-        // Aktif oyun sayısını kontrol et
-        const activeGames = await contract.getActiveGames(userAddress);
-        console.log("Aktif oyun sayısı:", activeGames.toString());
-
-        // Gas fiyatını al ve yüksek tut
+        
+        console.log("Oyun durumu:", await contract.getGameState(gameId));
+        
+        // Gas fiyatını al
         const feeData = await provider.getFeeData();
         console.log("Fee data:", {
-            maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei"),
-            maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
-            gasPrice: ethers.utils.formatUnits(feeData.gasPrice, "gwei")
+            maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, 'gwei'),
+            maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, 'gwei'),
+            gasPrice: ethers.utils.formatUnits(feeData.gasPrice, 'gwei')
         });
-
-        // Basit transaction parametreleri
-        const txParams = {
-            value: stakeWei,
-            gasLimit: 500000  // Çok yüksek gas limiti
-        };
-
+        
         console.log("Transaction gönderiliyor...");
-        const tx = await contract.joinGame(gameIdNum, moveValue, txParams);
+        
+        // Oyuna katıl
+        const tx = await contract.joinGame(gameId, move, {
+            value: stakeWei,
+            gasLimit: 500000
+        });
+        
         console.log("Transaction gönderildi:", tx.hash);
-
-        // Transaction'ı bekle
         console.log("Transaction onayı bekleniyor...");
-        const receipt = await tx.wait(1);
-        console.log("Transaction onaylandı:", receipt);
-
-        if (receipt.status === 0) {
-            // Hata sebebini bulmaya çalış
-            try {
-                await provider.call(tx, receipt.blockNumber);
-            } catch (error) {
-                const reason = error.data || error.message;
-                throw new Error("Transaction başarısız oldu: " + reason);
-            }
-            throw new Error("Transaction başarısız oldu");
-        }
-
-        // Oyun durumunu kontrol et
-        const gameStateAfter = await contract.getGameState(gameIdNum);
-        console.log("Oyun durumu (katılımdan sonra):", gameStateAfter);
-
+        
+        // Transaction'ı bekle
+        const receipt = await tx.wait();
+        console.log("Transaction receipt:", receipt);
+        
         return receipt;
-
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
         
-        // Hata mesajını daha anlaşılır hale getir
-        let errorMessage = "Oyuna katılırken bir hata oluştu";
+        // Hata mesajını daha detaylı göster
+        let errorMessage = "Bilinmeyen hata";
         
-        if (error.data) {
-            // Revert reason'ı bul
-            const data = error.data;
-            const reason = data.substring(138);
-            const decoded = ethers.utils.toUtf8String('0x' + reason);
-            errorMessage = decoded;
+        if (error.reason) {
+            errorMessage = error.reason;
         } else if (error.message) {
-            if (error.message.includes("insufficient funds")) {
-                errorMessage = "Yetersiz bakiye";
-            } else if (error.message.includes("gas required exceeds")) {
-                errorMessage = "Gas limiti çok yüksek";
-            } else if (error.message.includes("nonce")) {
-                errorMessage = "Lütfen bekleyen işlemlerin tamamlanmasını bekleyin";
-            } else if (error.message.includes("execution reverted")) {
-                const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
-                errorMessage = revertReason;
-            } else {
-                errorMessage = error.message;
+            errorMessage = error.message;
+            
+            // Revert sebebini çıkarmaya çalış
+            const revertMatch = error.message.match(/reverted with reason string '([^']+)'/);
+            if (revertMatch && revertMatch[1]) {
+                errorMessage = revertMatch[1];
             }
         }
         
-        throw new Error(errorMessage);
+        // Hata mesajını göster
+        const resultDiv = document.getElementById('join-result');
+        if (resultDiv) {
+            resultDiv.innerHTML = "Hata: " + errorMessage;
+            resultDiv.className = "result error";
+        }
+        
+        throw error;
     }
 }
 
@@ -1313,4 +1219,48 @@ function showNotification(message, type = "info") {
             notification.remove();
         }, 300);
     });
+}
+
+// Kontrat fonksiyonlarını doğrula
+async function validateContractFunctions() {
+    try {
+        console.log("Kontrat fonksiyonları:", Object.keys(contract.functions));
+        
+        // createGame fonksiyonunun imzasını kontrol et
+        const createGameFunction = Object.keys(contract.functions).find(f => f.startsWith('createGame('));
+        console.log("createGame fonksiyon imzası:", createGameFunction);
+        
+        // joinGame fonksiyonunun imzasını kontrol et
+        const joinGameFunction = Object.keys(contract.functions).find(f => f.startsWith('joinGame('));
+        console.log("joinGame fonksiyon imzası:", joinGameFunction);
+        
+        // Minimum stake değerini kontrol et
+        const minStake = await contract.MIN_STAKE();
+        console.log("Minimum stake:", ethers.utils.formatEther(minStake), "ETH");
+        
+        return true;
+    } catch (error) {
+        console.error("Kontrat fonksiyon doğrulama hatası:", error);
+        return false;
+    }
+}
+
+// Kontrat adresini ve ABI'yi kontrol et
+async function validateContract() {
+    try {
+        console.log("Kontrat adresi:", contractAddress);
+        
+        // Kontrat kodunu kontrol et
+        const code = await provider.getCode(contractAddress);
+        if (code === '0x') {
+            console.error("Kontrat adresi geçersiz veya kontrat deploy edilmemiş!");
+            return false;
+        }
+        
+        console.log("Kontrat kodu mevcut, uzunluk:", code.length);
+        return true;
+    } catch (error) {
+        console.error("Kontrat doğrulama hatası:", error);
+        return false;
+    }
 } 
