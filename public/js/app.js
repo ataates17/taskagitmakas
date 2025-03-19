@@ -1655,4 +1655,17 @@ async function joinBlockchainGame(firebaseGameId, blockchainGameId, move, stake)
         
         throw error;
     }
-} 
+}
+
+async function checkAccount() {
+    const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+    const account = accounts[0];
+    const balance = await web3.eth.getBalance(account);
+    console.log(`Account: ${account}`);
+    console.log(`Balance: ${web3.utils.fromWei(balance, 'ether')} ETH`);
+
+    const networkId = await web3.eth.net.getId();
+    console.log(`Network ID: ${networkId}`);
+}
+
+checkAccount(); 
