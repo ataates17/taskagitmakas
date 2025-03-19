@@ -202,80 +202,74 @@ function generateRandomSalt() {
     return salt;
 }
 
-// Oyuna katılma işleyicisi
-async function handleJoinGame() {
-    const resultDiv = document.getElementById('join-result');
-    const joinButton = document.getElementById('join-game');
-    
+// Oyuna katılma işlemi
+async function joinGameTransaction(gameId, move, stake) {
     try {
-        joinButton.disabled = true;
-        joinButton.textContent = 'İşlem Hazırlanıyor...';
-        
-        if (!signer) {
-            alert("Lütfen önce cüzdanınızı bağlayın!");
-            return;
+        // Oyun bilgilerini kontrol et
+        const gameCheck = await checkGameBeforeJoining(gameId);
+        if (!gameCheck.valid) {
+            throw new Error(gameCheck.error);
         }
-
-        // Form değerlerini al
-        const gameId = document.getElementById('game-id').value;
-        const moveSelect = document.getElementById('join-move');
-        const stakeInput = document.getElementById('join-stake');
         
-        const move = parseInt(moveSelect.value);
-        const stake = stakeInput.value;
-
-        if (!gameId || !move || !stake) {
-            alert("Lütfen oyun ID, hamle ve bahis miktarını girin!");
-            return;
-        }
-
-        resultDiv.innerHTML = `
-            <div class="loading">
-                <p>Transaction hazırlanıyor...</p>
-                <div class="spinner"></div>
-            </div>
-        `;
-        resultDiv.className = "result pending";
-
-        const receipt = await joinGameTransaction(gameId, move, stake);
+        // Move'u sayıya çevir
+        const moveValue = parseInt(move);
         
-        resultDiv.innerHTML = `
-            <div class="success">
-                <p>Oyuna başarıyla katıldınız!</p>
-                <p>Transaction: <a href="https://sepolia.etherscan.io/tx/${receipt.transactionHash}" target="_blank">
-                    ${receipt.transactionHash.substring(0, 10)}...
-                </a></p>
-                <p>Gas kullanımı: ${receipt.gasUsed.toString()}</p>
-            </div>
-        `;
-        resultDiv.className = "result success";
+        // Stake'i kontrat'tan al
+        const stakeWei = gameCheck.stake;
         
-        // Formu temizle
-        document.getElementById('game-id').value = "";
-        moveSelect.value = "1";
-        stakeInput.value = "";
+        console.log("Oyuna katılma detayları:", {
+            gameId,
+            move: moveValue,
+            stake: ethers.utils.formatEther(stakeWei)
+        });
         
-        // Oyun listesini güncelle
-        await loadGames();
+        // Gas fiyatını al
+        const feeData = await provider.getFeeData();
+        console.log("Fee data:", {
+            maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, 'gwei'),
+            maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, 'gwei'),
+            gasPrice: ethers.utils.formatUnits(feeData.gasPrice, 'gwei')
+        });
         
-        // İşlem başarılı olduğunda
-        joinButton.textContent = 'Başarılı!';
-        setTimeout(() => {
-            joinButton.disabled = false;
-            joinButton.textContent = 'Oyuna Katıl';
-        }, 3000);
-
+        console.log("Transaction gönderiliyor...");
+        
+        // Oyuna katıl - BigNumber kullanarak
+        const tx = await contract.joinGame(
+            ethers.BigNumber.from(gameId), 
+            ethers.BigNumber.from(moveValue), 
+            {
+                value: stakeWei,
+                gasLimit: 500000
+            }
+        );
+        
+        console.log("Transaction gönderildi:", tx.hash);
+        console.log("Transaction onayı bekleniyor...");
+        
+        // Transaction'ı bekle
+        const receipt = await tx.wait();
+        console.log("Transaction receipt:", receipt);
+        
+        return receipt;
     } catch (error) {
-        joinButton.disabled = false;
-        joinButton.textContent = 'Oyuna Katıl';
+        console.error("Join Transaction detaylı hata:", error);
         
-        resultDiv.innerHTML = `
-            <div class="error">
-                <p>Hata: ${error.message}</p>
-                <p>Lütfen MetaMask ayarlarınızı kontrol edin ve tekrar deneyin.</p>
-            </div>
-        `;
-        resultDiv.className = "result error";
+        // Hata mesajını daha detaylı göster
+        let errorMessage = "Bilinmeyen hata";
+        
+        if (error.reason) {
+            errorMessage = error.reason;
+        } else if (error.message) {
+            errorMessage = error.message;
+            
+            // Revert sebebini çıkarmaya çalış
+            const revertMatch = error.message.match(/reverted with reason string '([^']+)'/);
+            if (revertMatch && revertMatch[1]) {
+                errorMessage = revertMatch[1];
+            }
+        }
+        
+        throw new Error(errorMessage);
     }
 }
 
@@ -699,76 +693,6 @@ async function validateTransaction(value) {
         gasPrice: gasPrices.gasPrice,
         gasLimit: 150000
     };
-}
-
-// Oyuna katılma transaction'ı
-async function joinGameTransaction(gameId, move, stake) {
-    try {
-        if (!gameId || gameId < 0) {
-            throw new Error("Geçersiz oyun ID!");
-        }
-        
-        if (!move || move < 1 || move > 3) {
-            throw new Error("Geçersiz hamle!");
-        }
-        
-        // Oyun bilgilerini al
-        const gameInfo = await contract.getGameInfo(gameId);
-        const stakeWei = ethers.utils.parseEther(stake.toString());
-        
-        console.log("Oyun durumu:", await contract.getGameState(gameId));
-        
-        // Gas fiyatını al
-        const feeData = await provider.getFeeData();
-        console.log("Fee data:", {
-            maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, 'gwei'),
-            maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, 'gwei'),
-            gasPrice: ethers.utils.formatUnits(feeData.gasPrice, 'gwei')
-        });
-        
-        console.log("Transaction gönderiliyor...");
-        
-        // Oyuna katıl
-        const tx = await contract.joinGame(gameId, move, {
-            value: stakeWei,
-            gasLimit: 500000
-        });
-        
-        console.log("Transaction gönderildi:", tx.hash);
-        console.log("Transaction onayı bekleniyor...");
-        
-        // Transaction'ı bekle
-        const receipt = await tx.wait();
-        console.log("Transaction receipt:", receipt);
-        
-        return receipt;
-    } catch (error) {
-        console.error("Join Transaction detaylı hata:", error);
-        
-        // Hata mesajını daha detaylı göster
-        let errorMessage = "Bilinmeyen hata";
-        
-        if (error.reason) {
-            errorMessage = error.reason;
-        } else if (error.message) {
-            errorMessage = error.message;
-            
-            // Revert sebebini çıkarmaya çalış
-            const revertMatch = error.message.match(/reverted with reason string '([^']+)'/);
-            if (revertMatch && revertMatch[1]) {
-                errorMessage = revertMatch[1];
-            }
-        }
-        
-        // Hata mesajını göster
-        const resultDiv = document.getElementById('join-result');
-        if (resultDiv) {
-            resultDiv.innerHTML = "Hata: " + errorMessage;
-            resultDiv.className = "result error";
-        }
-        
-        throw error;
-    }
 }
 
 // Yeni oyun oluştur ve katıl
@@ -1238,6 +1162,19 @@ async function validateContractFunctions() {
         const minStake = await contract.MIN_STAKE();
         console.log("Minimum stake:", ethers.utils.formatEther(minStake), "ETH");
         
+        // Kontrat fonksiyonlarını test et
+        console.log("Kontrat fonksiyonları test ediliyor...");
+        
+        // gameCount fonksiyonunu çağır
+        const gameCount = await contract.gameCount();
+        console.log("Toplam oyun sayısı:", gameCount.toString());
+        
+        // Kontrat fonksiyonlarının parametrelerini kontrol et
+        const joinGameAbi = contractABI.find(item => item.name === 'joinGame');
+        if (joinGameAbi) {
+            console.log("joinGame fonksiyonu parametreleri:", joinGameAbi.inputs);
+        }
+        
         return true;
     } catch (error) {
         console.error("Kontrat fonksiyon doğrulama hatası:", error);
@@ -1262,5 +1199,45 @@ async function validateContract() {
     } catch (error) {
         console.error("Kontrat doğrulama hatası:", error);
         return false;
+    }
+}
+
+// Oyuna katılmadan önce oyun bilgilerini kontrol et
+async function checkGameBeforeJoining(gameId) {
+    try {
+        // Oyun bilgilerini al
+        const gameInfo = await contract.getGameInfo(gameId);
+        console.log("Oyun bilgileri:", {
+            creator: gameInfo.creator,
+            challenger: gameInfo.challenger,
+            stake: ethers.utils.formatEther(gameInfo.stake),
+            state: gameInfo.state
+        });
+        
+        // Oyun durumunu kontrol et
+        const gameState = await contract.getGameState(gameId);
+        console.log("Oyun durumu:", gameState);
+        
+        // Oyun geçerliliğini kontrol et
+        const isValid = await contract.isValidGame(gameId);
+        console.log("Oyun geçerli mi:", isValid);
+        
+        // Kendi oyununuza katılmayı engelle
+        if (gameInfo.creator === userAddress) {
+            return { valid: false, error: "Kendi oyununuza katılamazsınız" };
+        }
+        
+        // Oyun durumunu kontrol et
+        if (gameState.state !== 0) {
+            return { valid: false, error: "Bu oyuna katılınamaz" };
+        }
+        
+        return { 
+            valid: true, 
+            stake: gameInfo.stake 
+        };
+    } catch (error) {
+        console.error("Oyun kontrol hatası:", error);
+        return { valid: false, error: "Oyun kontrol edilemedi: " + error.message };
     }
 } 
