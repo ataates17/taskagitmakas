@@ -299,30 +299,25 @@ async function loadGameDetails() {
 // Platform istatistiklerini yükle
 async function loadPlatformStats() {
     try {
+        if (!contract) return;
+        
         const stats = await contract.getPlatformStats();
-        const platformWallet = stats.wallet;
-        const feePercent = stats.feePercent.toString();
-        const totalFees = weiToEth(stats.totalFees);
         
-        const statsHtml = `
-            <div class="stat-item">
-                <div class="stat-label">Platform Cüzdanı</div>
-                <div class="stat-value">${shortenAddress(platformWallet)}</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">Komisyon Oranı</div>
-                <div class="stat-value">%${feePercent}</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">Toplam Komisyon</div>
-                <div class="stat-value">${totalFees} ETH</div>
-            </div>
-        `;
-        
-        document.getElementById('platform-stats').innerHTML = statsHtml;
+        // Hata düzeltmesi: stats değerlerini kontrol et
+        if (stats && stats.length >= 2) {
+            const totalGamesPlayed = stats[0] ? stats[0].toString() : "0";
+            const totalEthTraded = stats[1] ? ethers.utils.formatEther(stats[1]) : "0";
+            
+            console.log("Platform istatistikleri:", { totalGamesPlayed, totalEthTraded });
+            
+            // İstatistikleri göster
+            document.getElementById('total-games').textContent = totalGamesPlayed;
+            document.getElementById('total-eth').textContent = totalEthTraded + " ETH";
+        } else {
+            console.log("Platform istatistikleri alınamadı");
+        }
     } catch (error) {
         console.error("Platform istatistikleri yükleme hatası:", error);
-        document.getElementById('platform-stats').innerHTML = `<p>Hata: ${error.message}</p>`;
     }
 }
 
@@ -1003,29 +998,34 @@ function closeCreateGameModal() {
 
 // Modal seçimlerini sıfırla
 function resetModalSelections() {
+    // Hamle seçimlerini sıfırla
     selectedMove = null;
     selectedStake = null;
     
-    // Seçimleri temizle
-    document.querySelectorAll('.move-option').forEach(option => {
+    // Hamle seçimlerini temizle
+    document.querySelectorAll('#create-game-modal .move-option').forEach(option => {
         option.classList.remove('selected');
     });
     
-    document.querySelectorAll('.stake-option').forEach(option => {
-        option.classList.remove('selected');
-    });
+    // Bahis miktarını sıfırla
+    document.getElementById('stake-amount').value = "0.01";
     
-    document.getElementById('custom-stake').value = '';
-    
-    // Özet bilgilerini güncelle
-    updateSelectionSummary();
+    // Otomatik reveal seçeneğini varsayılan olarak etkinleştir
+    const autoRevealCheckbox = document.getElementById('auto-reveal');
+    if (autoRevealCheckbox) {
+        autoRevealCheckbox.checked = true;
+        autoRevealEnabled = true;
+    } else {
+        // Checkbox yoksa varsayılan olarak true kabul et
+        autoRevealEnabled = true;
+    }
     
     // Oluştur butonunu devre dışı bırak
     document.getElementById('modal-create-game').disabled = true;
     
-    // Otomatik reveal seçeneğini varsayılan olarak etkinleştir
-    document.getElementById('auto-reveal').checked = true;
-    autoRevealEnabled = true;
+    // Sonuç alanını temizle
+    document.getElementById('modal-result').innerHTML = '';
+    document.getElementById('modal-result').className = 'modal-result';
 }
 
 // Seçim özetini güncelle
@@ -1138,13 +1138,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Modal içinde oyun oluştur butonuna tıklandığında
-    document.getElementById('modal-create-game').addEventListener('click', async function() {
+    document.getElementById('modal-create-game').addEventListener('click', async () => {
         if (selectedMove && selectedStake) {
             try {
                 // Loading mesajı göster
-                const resultDiv = document.getElementById('create-result');
+                const resultDiv = document.getElementById('modal-result');
                 resultDiv.innerHTML = "Oyun oluşturuluyor...";
-                resultDiv.className = "result pending";
+                resultDiv.className = "modal-result pending";
                 
                 // Modal'ı kapat
                 closeCreateGameModal();
@@ -1152,12 +1152,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Oyun oluştur
                 const receipt = await createGameTransaction(selectedMove, selectedStake);
                 
-                // Otomatik reveal seçeneğini sakla
-                localStorage.setItem(`autoReveal_${receipt.events[0].args.gameId}`, autoRevealEnabled);
-                
                 // Başarı mesajı göster
-                resultDiv.innerHTML = `Oyun başarıyla oluşturuldu! Transaction: ${receipt.transactionHash}`;
-                resultDiv.className = "result success";
+                const mainResultDiv = document.getElementById('create-result');
+                mainResultDiv.innerHTML = `Oyun başarıyla oluşturuldu! Transaction: ${receipt.transactionHash}`;
+                mainResultDiv.className = "result success";
                 
                 // Oyun listesini güncelle
                 await loadGames();

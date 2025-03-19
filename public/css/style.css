@@ -944,4 +944,39 @@ footer {
     margin-top: 20px;
     padding-top: 15px;
     border-top: 1px solid var(--border-color);
+}
+
+/* İstatistik stilleri */
+.stats-container {
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 15px;
+    background-color: var(--light-color);
+    border-radius: var(--border-radius);
+    min-width: 120px;
+    margin: 5px;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: var(--gray-color);
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+/* Favicon */
+.favicon {
+    width: 16px;
+    height: 16px;
 } 

@@ -6,6 +6,7 @@
     <title>Taş Kağıt Makas - Blockchain Oyunu</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 </head>
 <body>
@@ -77,8 +78,15 @@
                 <div class="card-header">
                     <h2>Platform İstatistikleri</h2>
                 </div>
-                <div id="platform-stats" class="stats">
-                    <p>İstatistikler yükleniyor...</p>
+                <div class="card-content stats-container">
+                    <div class="stat-item">
+                        <div class="stat-label">Toplam Oyun</div>
+                        <div id="total-games" class="stat-value">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Toplam İşlem Hacmi</div>
+                        <div id="total-eth" class="stat-value">- ETH</div>
+                    </div>
                 </div>
             </section>
 
