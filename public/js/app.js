@@ -575,8 +575,8 @@ async function joinGameTransaction(gameId, move) {
             throw new Error("Geçersiz hamle! 1-Taş, 2-Kağıt, 3-Makas olmalıdır.");
         }
         
-        // Secret değeri - empty string ile deneyebiliriz
-        const secret = "";
+        // Secret değeri - ÖNEMLİ: Oyunu oluşturan kişinin kullandığı ile aynı olmalı!
+        const secret = "mySecret";
         
         console.log(`Oyun ${gameId}'ye katılım: Hamle=${move}, Secret="${secret}"`);
         
