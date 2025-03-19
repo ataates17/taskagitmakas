@@ -732,4 +732,133 @@ document.getElementById('create-and-join').addEventListener('click', async () =>
         resultDiv.innerHTML = "Test başarısız: " + error.message;
         resultDiv.className = "result error";
     }
-}); 
+});
+
+// Reveal işlemi için fonksiyon
+async function revealMove(gameId) {
+    try {
+        const gameIdNum = parseInt(gameId);
+        if (isNaN(gameIdNum) || gameIdNum < 0) {
+            throw new Error("Geçersiz oyun ID");
+        }
+        
+        // Oyun bilgilerini kontrol et
+        const gameInfo = await contract.getGameInfo(gameIdNum);
+        
+        if (gameInfo.creator !== userAddress) {
+            throw new Error("Sadece oyun yaratıcısı reveal yapabilir");
+        }
+        
+        if (gameInfo.state !== 1) { // 1 = Joined state
+            throw new Error("Oyun reveal için uygun durumda değil");
+        }
+        
+        console.log("Reveal işlemi başlatılıyor...");
+        const tx = await contract.revealMove(gameIdNum, {
+            gasLimit: 300000
+        });
+        
+        console.log("Reveal transaction gönderildi:", tx.hash);
+        const receipt = await tx.wait(1);
+        console.log("Reveal transaction onaylandı:", receipt);
+        
+        return receipt;
+    } catch (error) {
+        console.error("Reveal hatası:", error);
+        throw error;
+    }
+}
+
+// Oyun listesine reveal butonu ekle
+function renderGames(games) {
+    const gamesList = document.getElementById('games-list');
+    gamesList.innerHTML = '';
+    
+    if (games.length === 0) {
+        gamesList.innerHTML = '<p>Aktif oyun bulunamadı.</p>';
+        return;
+    }
+    
+    const table = document.createElement('table');
+    table.className = 'games-table';
+    
+    // Tablo başlığı
+    const thead = document.createElement('thead');
+    thead.innerHTML = `
+        <tr>
+            <th>ID</th>
+            <th>Oluşturan</th>
+            <th>Katılan</th>
+            <th>Bahis</th>
+            <th>Durum</th>
+            <th>İşlem</th>
+        </tr>
+    `;
+    table.appendChild(thead);
+    
+    // Tablo içeriği
+    const tbody = document.createElement('tbody');
+    games.forEach(game => {
+        const tr = document.createElement('tr');
+        
+        // Durum metni
+        let stateText = '';
+        let actionButton = '';
+        
+        switch(game.state) {
+            case 0: // Created
+                stateText = 'Oluşturuldu';
+                if (game.creator === userAddress) {
+                    actionButton = `<button class="btn small" onclick="cancelGame(${game.id})">İptal Et</button>`;
+                } else {
+                    actionButton = `<button class="btn small primary" onclick="prepareJoinGame(${game.id})">Katıl</button>`;
+                }
+                break;
+            case 1: // Joined
+                stateText = 'Katılındı';
+                if (game.creator === userAddress) {
+                    actionButton = `<button class="btn small primary" onclick="handleRevealMove(${game.id})">Reveal</button>`;
+                }
+                break;
+            case 2: // Revealed
+                stateText = 'Açıklandı';
+                break;
+            case 3: // Finished
+                stateText = 'Tamamlandı';
+                break;
+        }
+        
+        tr.innerHTML = `
+            <td>${game.id}</td>
+            <td>${shortenAddress(game.creator)}</td>
+            <td>${game.challenger ? shortenAddress(game.challenger) : '-'}</td>
+            <td>${game.stake} ETH</td>
+            <td>${stateText}</td>
+            <td>${actionButton}</td>
+        `;
+        
+        tbody.appendChild(tr);
+    });
+    
+    table.appendChild(tbody);
+    gamesList.appendChild(table);
+}
+
+// Reveal butonu için handler
+async function handleRevealMove(gameId) {
+    const resultDiv = document.getElementById('join-result');
+    resultDiv.innerHTML = "Reveal işlemi başlatılıyor...";
+    resultDiv.className = "result pending";
+    
+    try {
+        const receipt = await revealMove(gameId);
+        resultDiv.innerHTML = "Reveal başarılı! Transaction: " + receipt.transactionHash;
+        resultDiv.className = "result success";
+        
+        // Oyun listesini güncelle
+        await loadGames();
+    } catch (error) {
+        resultDiv.innerHTML = "Reveal başarısız: " + error.message;
+        resultDiv.className = "result error";
+    }
+} 
