@@ -3,17 +3,19 @@ pragma solidity ^0.8.0;
 
 contract RockPaperScissorsV2 {
     enum Move { None, Rock, Paper, Scissors }
-    enum GameState { Created, Joined, Finished }
+    enum GameState { Created, Joined, Reveal, Finished }
     
     struct Game {
         address creator;
         address challenger;
+        bytes32 creatorCommit;
         Move creatorMove;
         Move challengerMove;
         uint256 stake;
         GameState state;
         uint256 creationTime;
         uint256 joinTime;
+        uint256 revealTime;
         address winner;
     }
     
@@ -118,20 +120,21 @@ contract RockPaperScissorsV2 {
         require(game.state != GameState.Finished, "Game already finished");
     }
 
-    function createGame(Move move) external payable {
-        require(move != Move.None, "Invalid move");
+    function createGame(bytes32 commit) external payable {
         require(msg.value > 0, "Stake must be greater than 0");
         
         uint256 gameId = gameCount++;
         games[gameId] = Game({
             creator: msg.sender,
             challenger: address(0),
-            creatorMove: move,
+            creatorCommit: commit,
+            creatorMove: Move.None,
             challengerMove: Move.None,
             stake: msg.value,
             state: GameState.Created,
             creationTime: block.timestamp,
             joinTime: 0,
+            revealTime: 0,
             winner: address(0)
         });
         
@@ -142,8 +145,7 @@ contract RockPaperScissorsV2 {
         Game storage game = games[gameId];
         require(game.state == GameState.Created, "Game is not in Created state");
         require(msg.sender != game.creator, "Creator cannot join their own game");
-        require(move != Move.None, "Invalid move");
-        require(msg.value == game.stake, "Stake must match the creator's stake");
+        require(msg.value == game.stake, "Stake must match");
         
         game.challenger = msg.sender;
         game.challengerMove = move;
@@ -156,28 +158,35 @@ contract RockPaperScissorsV2 {
         _finishGame(gameId);
     }
     
-    function _finishGame(uint256 gameId) private {
+    function revealMove(uint256 gameId, Move move, string memory secret) external {
         Game storage game = games[gameId];
         require(game.state == GameState.Joined, "Game is not in Joined state");
+        require(msg.sender == game.creator, "Only creator can reveal");
+        require(keccak256(abi.encodePacked(move, secret)) == game.creatorCommit, "Invalid move or secret");
         
-        // Kazananı belirle
+        game.creatorMove = move;
+        game.state = GameState.Reveal;
+        game.revealTime = block.timestamp;
+        
+        // Determine winner
         if (game.creatorMove == game.challengerMove) {
-            // Beraberlik
-            payable(game.creator).transfer(game.stake);
-            payable(game.challenger).transfer(game.stake);
-            game.winner = address(0);
+            game.winner = address(0); // Draw
         } else if (
             (game.creatorMove == Move.Rock && game.challengerMove == Move.Scissors) ||
             (game.creatorMove == Move.Paper && game.challengerMove == Move.Rock) ||
             (game.creatorMove == Move.Scissors && game.challengerMove == Move.Paper)
         ) {
-            // Creator kazandı
-            payable(game.creator).transfer(2 * game.stake);
             game.winner = game.creator;
         } else {
-            // Challenger kazandı
-            payable(game.challenger).transfer(2 * game.stake);
             game.winner = game.challenger;
+        }
+        
+        // Payout
+        if (game.winner == address(0)) {
+            payable(game.creator).transfer(game.stake);
+            payable(game.challenger).transfer(game.stake);
+        } else {
+            payable(game.winner).transfer(2 * game.stake);
         }
         
         game.state = GameState.Finished;
@@ -222,37 +231,17 @@ contract RockPaperScissorsV2 {
         emit GameCancelled(gameId);
     }
     
-    function claimTimeoutAsChallenger(uint256 gameId) external nonReentrant {
-        require(gameId < gameCount, "Game does not exist");
+    function claimTimeout(uint256 gameId) external {
         Game storage game = games[gameId];
-        
-        require(msg.sender == game.challenger, "Only challenger can claim timeout");
         require(game.state == GameState.Joined, "Game is not in Joined state");
         require(block.timestamp > game.joinTime + timeoutPeriod, "Timeout period has not passed yet");
         
-        // State'i önce güncelle
-        game.state = GameState.Finished;
+        // Eğer creator hamlesini açıklamazsa, challenger kazanan olur
         game.winner = game.challenger;
+        payable(game.challenger).transfer(2 * game.stake);
         
-        // Platform ücreti hesapla
-        uint256 totalPrize = 2 * game.stake;
-        uint256 platformFee = (totalPrize * PLATFORM_FEE_PERCENT) / 100;
-        if (platformFee < MIN_PLATFORM_FEE) {
-            platformFee = MIN_PLATFORM_FEE;
-        }
-        uint256 challengerPrize = totalPrize - platformFee;
-        
-        // Platform ücretini topla
-        if (platformFee > 0) {
-            totalPlatformFees += platformFee;
-            _safeTransfer(payable(PLATFORM_WALLET), platformFee);
-            emit PlatformFeeCollected(gameId, platformFee);
-        }
-        
-        // En son transferi yap
-        _safeTransfer(payable(game.challenger), challengerPrize);
-        
-        emit GameFinished(gameId, game.challenger, challengerPrize);
+        game.state = GameState.Finished;
+        emit GameFinished(gameId, game.challenger, 2 * game.stake);
     }
     
     // Platform istatistiklerini görüntüleme
