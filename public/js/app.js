@@ -9,6 +9,9 @@ let gameCreationData = {}; // Oyun oluşturma verilerini saklamak için
 let selectedMove = null;
 let selectedStake = null;
 
+// Otomatik reveal seçeneğini sakla
+let autoRevealEnabled = true;
+
 // Sayfa yüklendiğinde
 document.addEventListener('DOMContentLoaded', async () => {
     // Kontrat adresini göster
@@ -71,6 +74,9 @@ async function connectWallet() {
         
         // Kullanıcı bilgilerini yükle
         loadUserInfo();
+        
+        // Oyun durumunu dinle ve otomatik reveal yap
+        await setupGameEventListeners();
         
         return true;
     } catch (error) {
@@ -348,6 +354,9 @@ async function loadGames() {
         
         // Oyunları render et
         renderGameTabs(openGames, activeGames, finishedGames);
+        
+        // Reveal gerektiren oyunları kontrol et
+        checkGamesForReveal();
         
     } catch (error) {
         console.error("Oyunları yükleme hatası:", error);
@@ -995,6 +1004,10 @@ function resetModalSelections() {
     
     // Oluştur butonunu devre dışı bırak
     document.getElementById('modal-create-game').disabled = true;
+    
+    // Otomatik reveal seçeneğini varsayılan olarak etkinleştir
+    document.getElementById('auto-reveal').checked = true;
+    autoRevealEnabled = true;
 }
 
 // Seçim özetini güncelle
@@ -1101,6 +1114,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // Otomatik reveal seçeneği değiştiğinde
+    document.getElementById('auto-reveal').addEventListener('change', function() {
+        autoRevealEnabled = this.checked;
+    });
+    
     // Modal içinde oyun oluştur butonuna tıklandığında
     document.getElementById('modal-create-game').addEventListener('click', async function() {
         if (selectedMove && selectedStake) {
@@ -1115,6 +1133,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Oyun oluştur
                 const receipt = await createGameTransaction(selectedMove, selectedStake);
+                
+                // Otomatik reveal seçeneğini sakla
+                localStorage.setItem(`autoReveal_${receipt.events[0].args.gameId}`, autoRevealEnabled);
                 
                 // Başarı mesajı göster
                 resultDiv.innerHTML = `Oyun başarıyla oluşturuldu! Transaction: ${receipt.transactionHash}`;
@@ -1132,4 +1153,170 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-}); 
+});
+
+// Oyun durumunu kontrol et ve gerekirse reveal hatırlatıcısı göster
+async function checkGamesForReveal() {
+    try {
+        if (!contract || !userAddress) return;
+        
+        // Toplam oyun sayısını al
+        const gameCount = await contract.gameCount();
+        
+        // Son 20 oyunu kontrol et
+        for (let i = gameCount.toNumber() - 1; i >= Math.max(0, gameCount.toNumber() - 20); i--) {
+            try {
+                // Oyun bilgilerini al
+                const gameInfo = await contract.getGameInfo(i);
+                
+                // Eğer oyun yaratıcısı kullanıcı ise ve oyun durumu "Joined" ise
+                if (gameInfo.creator === userAddress && gameInfo.state === 1) {
+                    // Reveal hatırlatıcısı göster
+                    showRevealReminder(i);
+                    break; // İlk bulunan oyun için göster
+                }
+            } catch (error) {
+                console.error(`Oyun ${i} kontrol edilirken hata:`, error);
+            }
+        }
+    } catch (error) {
+        console.error("Reveal kontrolü hatası:", error);
+    }
+}
+
+// Reveal hatırlatıcısı göster
+function showRevealReminder(gameId) {
+    // Eğer zaten bir hatırlatıcı varsa gösterme
+    if (document.querySelector('.reveal-reminder')) return;
+    
+    const reminder = document.createElement('div');
+    reminder.className = 'reveal-reminder';
+    reminder.innerHTML = `
+        <div class="reminder-content">
+            <h3>Reveal İşlemi Gerekiyor!</h3>
+            <p>Oyun #${gameId} için hamlenizi açıklamanız gerekiyor.</p>
+            <button class="btn primary" onclick="handleRevealMove(${gameId})">Şimdi Reveal Et</button>
+            <button class="btn outline" onclick="dismissReminder()">Daha Sonra</button>
+        </div>
+    `;
+    
+    document.body.appendChild(reminder);
+    
+    // Animasyon ile göster
+    setTimeout(() => {
+        reminder.classList.add('show');
+    }, 100);
+}
+
+// Hatırlatıcıyı kapat
+function dismissReminder() {
+    const reminder = document.querySelector('.reveal-reminder');
+    if (reminder) {
+        reminder.classList.remove('show');
+        setTimeout(() => {
+            reminder.remove();
+        }, 300);
+    }
+}
+
+// Oyuna katılma popup'ını aç
+function openJoinGameModal(gameId, stake) {
+    // Oyun ID'sini ve bahis miktarını sakla
+    selectedGameId = gameId;
+    selectedGameStake = stake;
+    
+    // Modal'ı göster
+    document.getElementById('join-game-modal').style.display = 'block';
+    document.getElementById('modal-overlay').style.display = 'block';
+    
+    // Modal başlığını güncelle
+    document.querySelector('#join-game-modal .modal-header h3').textContent = `Oyun #${gameId}'e Katıl`;
+    
+    // Bahis bilgisini göster
+    document.querySelector('#join-game-modal .stake-info').textContent = `Bahis: ${stake} ETH`;
+    
+    // Seçimleri sıfırla
+    selectedJoinMove = null;
+    document.querySelectorAll('#join-game-modal .move-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    // Katıl butonunu devre dışı bırak
+    document.getElementById('modal-join-game').disabled = true;
+}
+
+// Oyun durumunu dinle ve otomatik reveal yap
+async function setupGameEventListeners() {
+    if (!contract || !userAddress) return;
+    
+    try {
+        // GameJoined olayını dinle
+        contract.on("GameJoined", async (gameId, challenger, stake, event) => {
+            console.log("Oyuna katılım olayı:", { gameId, challenger, stake });
+            
+            // Oyun bilgilerini kontrol et
+            const gameInfo = await contract.getGameInfo(gameId);
+            
+            // Eğer oyun yaratıcısı kullanıcı ise otomatik reveal yap
+            if (gameInfo.creator === userAddress && gameInfo.state === 1) {
+                console.log(`Oyun #${gameId} için otomatik reveal başlatılıyor...`);
+                
+                try {
+                    // Kullanıcıya bildirim göster
+                    showNotification(`Oyun #${gameId} için otomatik reveal işlemi başlatılıyor...`);
+                    
+                    // Reveal işlemini gerçekleştir
+                    const receipt = await revealMove(gameId);
+                    
+                    // Başarılı bildirim göster
+                    showNotification(`Oyun #${gameId} için reveal işlemi başarıyla tamamlandı!`, "success");
+                    
+                    // Oyun listesini güncelle
+                    await loadGames();
+                } catch (error) {
+                    console.error("Otomatik reveal hatası:", error);
+                    showNotification(`Otomatik reveal başarısız: ${error.message}`, "error");
+                }
+            }
+        });
+        
+        console.log("Oyun olayları dinleniyor...");
+    } catch (error) {
+        console.error("Olay dinleyici hatası:", error);
+    }
+}
+
+// Bildirim göster
+function showNotification(message, type = "info") {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <div class="notification-content">
+            <span class="notification-message">${message}</span>
+            <button class="notification-close">&times;</button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Animasyon ile göster
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 100);
+    
+    // Otomatik kapat
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, 5000);
+    
+    // Kapatma butonuna tıklandığında
+    notification.querySelector('.notification-close').addEventListener('click', () => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    });
+} 

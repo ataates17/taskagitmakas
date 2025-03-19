@@ -156,6 +156,70 @@
 
             <!-- Overlay -->
             <div id="modal-overlay" class="modal-overlay"></div>
+
+            <!-- Reveal açıklaması -->
+            <div class="info-box">
+                <h4>Reveal İşlemi Nedir?</h4>
+                <p>Taş-Kağıt-Makas oyununda, hamlelerin gizli tutulması için iki aşamalı bir süreç kullanılır:</p>
+                <ol>
+                    <li><strong>Hamle Oluşturma:</strong> Oyun yaratıcısı hamlesini şifrelenmiş olarak gönderir.</li>
+                    <li><strong>Hamle Açıklama (Reveal):</strong> Meydan okuyan oyuncu hamlesini gönderdikten sonra, oyun yaratıcısı kendi hamlesini açıklar ve sonuç belirlenir.</li>
+                </ol>
+                <p>Eğer bir oyun yaratıcısıysanız ve oyununuza birisi katıldıysa, reveal işlemi yapmanız gerekir.</p>
+            </div>
+
+            <div class="auto-reveal-option">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="auto-reveal" checked>
+                    <span class="checkmark"></span>
+                    Otomatik Reveal (Birisi oyuna katıldığında otomatik olarak reveal işlemi yap)
+                </label>
+            </div>
+
+            <!-- Oyuna katılma popup'ı -->
+            <div id="join-game-modal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Oyuna Katıl</h3>
+                        <button class="close-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="game-info">
+                            <div class="game-id-info">Oyun ID: <span id="join-game-id">-</span></div>
+                            <div class="stake-info">Bahis: <span id="join-game-stake">-</span> ETH</div>
+                        </div>
+                        
+                        <div class="move-selection">
+                            <h4>Hamlenizi Seçin</h4>
+                            <div class="move-options">
+                                <div class="move-option" data-move="1">
+                                    <img src="img/rock.png" alt="Taş">
+                                    <span>Taş</span>
+                                </div>
+                                <div class="move-option" data-move="2">
+                                    <img src="img/paper.png" alt="Kağıt">
+                                    <span>Kağıt</span>
+                                </div>
+                                <div class="move-option" data-move="3">
+                                    <img src="img/scissors.png" alt="Makas">
+                                    <span>Makas</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="selected-options">
+                            <div class="selected-move">
+                                <span class="label">Seçilen Hamle:</span>
+                                <span class="value">Seçilmedi</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="modal-join-game" class="btn primary" disabled>Oyuna Katıl</button>
+                        <button class="btn outline cancel-modal">İptal</button>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <footer>
