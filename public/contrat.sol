@@ -3,19 +3,17 @@ pragma solidity ^0.8.0;
 
 contract RockPaperScissorsV2 {
     enum Move { None, Rock, Paper, Scissors }
-    enum GameState { Created, Joined, Revealed, Finished }
+    enum GameState { Created, Joined, Finished }
     
     struct Game {
         address creator;
         address challenger;
-        bytes32 creatorCommitment;  // Şifrelenmiş hamle
+        Move creatorMove;
         Move challengerMove;
-        Move creatorMove;           // Açıklanmış hamle
         uint256 stake;
         GameState state;
         uint256 creationTime;
         uint256 joinTime;
-        bytes32 salt;              // Otomatik oluşturulan salt
         address winner;
     }
     
@@ -120,238 +118,70 @@ contract RockPaperScissorsV2 {
         require(game.state != GameState.Finished, "Game already finished");
     }
 
-    function createGame(Move move) external payable nonReentrant returns (uint256) {
-        require(tx.gasprice <= block.basefee * 2, "Gas price too high");
-        require(gasleft() >= MAX_GAS_LIMIT, "Insufficient gas");
-        require(msg.value >= MIN_STAKE, "Stake must be at least 100 wei");
-        require(msg.value <= 1 ether, "Stake cannot exceed 1 ether");
-        require(move == Move.Rock || move == Move.Paper || move == Move.Scissors, "Invalid move");
+    function createGame(Move move) external payable {
+        require(move != Move.None, "Invalid move");
+        require(msg.value > 0, "Stake must be greater than 0");
         
-        // Rate limiting kontrolü
-        require(
-            block.timestamp >= lastGameCreationTime[msg.sender] + GAME_CREATION_COOLDOWN,
-            "Please wait before creating another game"
-        );
-        
-        // Kullanıcı oyun limiti kontrolü
-        require(
-            userGameCount[msg.sender] < MAX_GAMES_PER_USER,
-            "Maximum active game limit reached"
-        );
-        
-        // Güvenli commitment oluştur
-        (bytes32 commitment, bytes32 salt) = _createCommitment(move, msg.sender);
-        
-        uint256 gameId = gameCount;
-        gameExists[gameId] = true;
-        gameLastAction[gameId] = block.timestamp;
-        
+        uint256 gameId = gameCount++;
         games[gameId] = Game({
             creator: msg.sender,
             challenger: address(0),
-            creatorCommitment: commitment,
+            creatorMove: move,
             challengerMove: Move.None,
-            creatorMove: Move.None,
             stake: msg.value,
             state: GameState.Created,
             creationTime: block.timestamp,
             joinTime: 0,
-            salt: salt,
             winner: address(0)
         });
         
-        gameCount++;
-        userGameCount[msg.sender]++;
-        lastGameCreationTime[msg.sender] = block.timestamp;
-        
         emit GameCreated(gameId, msg.sender, msg.value);
-        
-        return gameId;
     }
     
-    function joinGame(uint256 gameId, Move move) external payable nonReentrant {
-        require(gasleft() >= 100000, "Insufficient gas");
-        require(gameId < gameCount, "Invalid game ID");
-        
+    function joinGame(uint256 gameId, Move move) external payable {
         Game storage game = games[gameId];
-        require(gameExists[gameId], "Game does not exist");
-        _validateGameState(gameId, game);
-        
         require(game.state == GameState.Created, "Game is not in Created state");
         require(msg.sender != game.creator, "Creator cannot join their own game");
-        require(game.challenger == address(0), "Game already has a challenger");
-        require(move == Move.Rock || move == Move.Paper || move == Move.Scissors, "Invalid move");
-        require(msg.value == game.stake, "Stake amount must match the creator's stake");
-        require(block.timestamp <= game.creationTime + 1 days, "Game expired");
+        require(move != Move.None, "Invalid move");
+        require(msg.value == game.stake, "Stake must match the creator's stake");
         
-        // State'i güncelle
         game.challenger = msg.sender;
         game.challengerMove = move;
         game.state = GameState.Joined;
         game.joinTime = block.timestamp;
         
-        gameLastAction[gameId] = block.timestamp;
-        
         emit GameJoined(gameId, msg.sender, move);
-    }
-    
-    function revealMove(uint256 gameId) external nonReentrant {
-        require(gasleft() >= 80000, "Insufficient gas for reveal"); // Reveal için gas limitini düşür
         
-        Game storage game = games[gameId];
-        _validateGameState(gameId, game);
-        
-        require(game.state == GameState.Joined, "Game is not in Joined state");
-        require(msg.sender == game.creator, "Only creator can reveal move");
-        
-        _revealMove(gameId);
-    }
-    
-    function _revealMove(uint256 gameId) private {
-        Game storage game = games[gameId];
-        _validateGameState(gameId, game);
-        
-        // Input validasyonu
-        require(game.state == GameState.Joined, "Game is not in Joined state");
-        require(game.creatorCommitment != bytes32(0), "Invalid commitment");
-        require(game.salt != bytes32(0), "Invalid salt");
-        
-        bool moveFound = false;
-        Move foundMove = Move.None;
-        uint8 attempts = 0;
-        
-        // Sınırlı sayıda deneme yap
-        for (uint8 i = 1; i <= 3 && attempts < 3; i++) {
-            attempts++;
-            Move move = Move(i);
-            
-            // Commitment'ı doğrula
-            bytes32 testCommitment = keccak256(abi.encodePacked(
-                uint8(move),
-                game.salt,
-                game.creator,
-                block.chainid,
-                address(this),
-                userNonces[game.creator]
-            ));
-            
-            if (testCommitment == game.creatorCommitment) {
-                foundMove = move;
-                moveFound = true;
-                break;
-            }
-        }
-        
-        require(moveFound, "Invalid move commitment");
-        require(gasleft() >= MAX_GAS_LIMIT / 4, "Insufficient gas for finish");
-        
-        game.creatorMove = foundMove;
-        game.state = GameState.Revealed;
-        
+        // Oyun otomatik olarak sonuçlanır
         _finishGame(gameId);
-        
-        gameLastAction[gameId] = block.timestamp;
-    }
-    
-    function _calculatePlatformFee(uint256 amount) private pure returns (uint256) {
-        uint256 fee = (amount * PLATFORM_FEE_PERCENT) / 100;
-        
-        // Eğer hesaplanan komisyon 0 ise ve miktar 0 değilse, minimum komisyonu kullan
-        if (fee == 0 && amount > 0) {
-            return MIN_PLATFORM_FEE;
-        }
-        
-        return fee;
     }
     
     function _finishGame(uint256 gameId) private {
         Game storage game = games[gameId];
-        _validateGameState(gameId, game);
+        require(game.state == GameState.Joined, "Game is not in Joined state");
         
-        // State değişikliklerini önce yap
-        game.state = GameState.Finished;
-        
-        // Oyun sayılarını güncelle - underflow kontrolü
-        if (userGameCount[game.creator] > 0) {
-            unchecked {
-                userGameCount[game.creator]--;
-            }
-        }
-
-        Move creatorMove = game.creatorMove;
-        Move challengerMove = game.challengerMove;
-        
-        if (creatorMove == challengerMove) {
-            // Beraberlik durumu
-            uint256 platformFee = _calculatePlatformFee(game.stake);
-            uint256 returnAmount = game.stake - platformFee;
-            
-            // Önce state'i güncelle
+        // Kazananı belirle
+        if (game.creatorMove == game.challengerMove) {
+            // Beraberlik
+            payable(game.creator).transfer(game.stake);
+            payable(game.challenger).transfer(game.stake);
             game.winner = address(0);
-            
-            // Platform ücretini topla
-            if (platformFee > 0) {
-                totalPlatformFees += platformFee * 2;
-                _safeTransfer(payable(PLATFORM_WALLET), platformFee * 2);
-                emit PlatformFeeCollected(gameId, platformFee * 2);
-            }
-            
-            // En son transferleri yap
-            _safeTransfer(payable(game.creator), returnAmount);
-            _safeTransfer(payable(game.challenger), returnAmount);
-            
-            emit GameFinished(gameId, address(0), returnAmount);
-        }
-        else if (
-            (creatorMove == Move.Rock && challengerMove == Move.Scissors) ||
-            (creatorMove == Move.Paper && challengerMove == Move.Rock) ||
-            (creatorMove == Move.Scissors && challengerMove == Move.Paper)
+        } else if (
+            (game.creatorMove == Move.Rock && game.challengerMove == Move.Scissors) ||
+            (game.creatorMove == Move.Paper && game.challengerMove == Move.Rock) ||
+            (game.creatorMove == Move.Scissors && game.challengerMove == Move.Paper)
         ) {
             // Creator kazandı
-            uint256 totalPrize = 2 * game.stake;
-            uint256 platformFee = _calculatePlatformFee(totalPrize);
-            uint256 creatorPrize = totalPrize - platformFee;
-            
-            // Önce state'i güncelle
+            payable(game.creator).transfer(2 * game.stake);
             game.winner = game.creator;
-            
-            // Platform ücretini topla
-            if (platformFee > 0) {
-                totalPlatformFees += platformFee;
-                _safeTransfer(payable(PLATFORM_WALLET), platformFee);
-                emit PlatformFeeCollected(gameId, platformFee);
-            }
-            
-            // En son transferi yap
-            _safeTransfer(payable(game.creator), creatorPrize);
-            
-            emit GameFinished(gameId, game.creator, creatorPrize);
-        }
-        else {
+        } else {
             // Challenger kazandı
-            uint256 totalPrize = 2 * game.stake;
-            uint256 platformFee = _calculatePlatformFee(totalPrize);
-            uint256 challengerPrize = totalPrize - platformFee;
-            
-            // Önce state'i güncelle
+            payable(game.challenger).transfer(2 * game.stake);
             game.winner = game.challenger;
-            
-            // Platform ücretini topla
-            if (platformFee > 0) {
-                totalPlatformFees += platformFee;
-                _safeTransfer(payable(PLATFORM_WALLET), platformFee);
-                emit PlatformFeeCollected(gameId, platformFee);
-            }
-            
-            // En son transferi yap
-            _safeTransfer(payable(game.challenger), challengerPrize);
-            
-            emit GameFinished(gameId, game.challenger, challengerPrize);
         }
         
-        // Oyunu bitir
-        gameExists[gameId] = false;
-        gameLastAction[gameId] = block.timestamp;
+        game.state = GameState.Finished;
+        emit GameFinished(gameId, game.winner, 2 * game.stake);
     }
     
     function getGameInfo(uint256 gameId) external view returns (
@@ -406,7 +236,10 @@ contract RockPaperScissorsV2 {
         
         // Platform ücreti hesapla
         uint256 totalPrize = 2 * game.stake;
-        uint256 platformFee = _calculatePlatformFee(totalPrize);
+        uint256 platformFee = (totalPrize * PLATFORM_FEE_PERCENT) / 100;
+        if (platformFee < MIN_PLATFORM_FEE) {
+            platformFee = MIN_PLATFORM_FEE;
+        }
         uint256 challengerPrize = totalPrize - platformFee;
         
         // Platform ücretini topla
@@ -464,12 +297,13 @@ contract RockPaperScissorsV2 {
     
     // Yeni güvenlik fonksiyonları
     function isValidGame(uint256 gameId) external view returns (bool) {
-        return gameExists[gameId] && 
-               block.timestamp - gameLastAction[gameId] <= GAME_TIMEOUT;
+        require(gameId < gameCount, "Game does not exist");
+        Game storage game = games[gameId];
+        return game.state != GameState.Finished && block.timestamp - gameLastAction[gameId] <= GAME_TIMEOUT;
     }
     
     function getGameTimeout(uint256 gameId) external view returns (uint256) {
-        require(gameExists[gameId], "Game does not exist");
+        require(gameId < gameCount, "Game does not exist");
         uint256 lastAction = gameLastAction[gameId];
         if (block.timestamp <= lastAction + GAME_TIMEOUT) {
             return lastAction + GAME_TIMEOUT - block.timestamp;
