@@ -88,7 +88,16 @@ async function connectWallet() {
 
 // Oyun oluşturma işleyicisi - artık kullanılmıyor, popup kullanılıyor
 async function handleCreateGame() {
-    openCreateGameModal();
+    const move = "Rock"; // Oyuncunun seçimi
+    const secret = "mySecret"; // Gizli anahtar
+    const commit = ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(["string", "string"], [move, secret]));
+
+    try {
+        const receipt = await createGameTransaction(commit);
+        console.log("Oyun başarıyla oluşturuldu:", receipt);
+    } catch (error) {
+        console.error("Oyun oluşturma hatası:", error);
+    }
 }
 
 // Oyun oluşturma transaction'ı
