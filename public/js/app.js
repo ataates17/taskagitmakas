@@ -311,196 +311,254 @@ async function getUserProfileByWalletAddress(walletAddress) {
     }
 }
 
-// Oyun oluşturma işleyicisi - artık kullanılmıyor, popup kullanılıyor
+// Oyun oluştur
 async function handleCreateGame() {
-    openCreateGameModal();
-}
-
-// Oyun oluşturma transaction'ı
-async function createGameTransaction(move, stake) {
     try {
-        if (!move || move < 1 || move > 3) {
-            throw new Error("Geçersiz hamle!");
+        if (!userAddress || !signer) {
+            const connected = await connectWallet();
+            if (!connected) return;
         }
-
-        // Minimum stake kontrolü
-        const minStake = await contract.MIN_STAKE();
-        const stakeWei = ethers.utils.parseEther(stake.toString());
-        if (stakeWei.lt(minStake)) {
-            throw new Error(`Minimum bahis miktarı: ${ethers.utils.formatEther(minStake)} ETH`);
-        }
-
-        // Aktif oyun sayısı kontrolü
-        const activeGames = await contract.getActiveGames(userAddress);
-        const maxGames = await contract.MAX_GAMES_PER_USER();
-        if (activeGames.gte(maxGames)) {
-            throw new Error(`Maksimum ${maxGames} aktif oyununuz olabilir`);
-        }
-
-        // Zaman kontrolü
-        const nextAllowedTime = await contract.getNextAllowedGameTime(userAddress);
-        if (nextAllowedTime.gt(0)) {
-            const waitTime = Math.ceil(nextAllowedTime.toNumber() - Date.now() / 1000);
-            throw new Error(`Lütfen ${waitTime} saniye bekleyin`);
-        }
-
-        // Rastgele bir salt değeri oluştur
-        const salt = generateRandomSalt();
         
-        // Commit hash'i oluştur - uint8 yerine uint olarak deneyelim
-        const commitHash = ethers.utils.solidityKeccak256(
-            ["uint", "string"],
-            [move, salt]
-        );
-        
-        console.log("Transaction detayları:", {
-            commitHash,
-            salt,
-            move,
-            stakeWei: stakeWei.toString()
-        });
-
-        // Kontrat fonksiyonlarını doğrula
-        await validateContractFunctions();
-
-        // Commit hash'i ve salt değerini gönder - farklı parametre sırası deneyelim
-        const tx = await contract.createGame(commitHash, salt, {
-            value: stakeWei,
-            gasLimit: 500000
-        });
-
-        console.log("Transaction gönderildi:", tx.hash);
-        console.log("Transaction onayı bekleniyor...");
-        
-        // Transaction'ı bekle
-        const receipt = await tx.wait();
-        console.log("Transaction receipt:", receipt);
-
-        return receipt;
+        // Oyun oluşturma modalını aç
+        openCreateGameModal();
     } catch (error) {
         console.error("Oyun oluşturma hatası:", error);
-        
-        // Hata mesajını daha detaylı göster
-        let errorMessage = "Bilinmeyen hata";
-        
-        if (error.reason) {
-            errorMessage = error.reason;
-        } else if (error.message) {
-            errorMessage = error.message;
-            
-            // Revert sebebini çıkarmaya çalış
-            const revertMatch = error.message.match(/reverted with reason string '([^']+)'/);
-            if (revertMatch && revertMatch[1]) {
-                errorMessage = revertMatch[1];
-            }
-        }
-        
-        // Hata mesajını göster
-        const resultDiv = document.getElementById('create-result');
-        if (resultDiv) {
-            resultDiv.innerHTML = "Hata: " + errorMessage;
-            resultDiv.className = "result error";
-        }
-        
-        throw error;
+        showResult('create-result', "Oyun oluşturma hatası: " + error.message, false);
     }
 }
 
-// Daha güvenli rastgele salt değeri oluştur
-function generateRandomSalt() {
-    // Basit bir salt değeri oluştur
-    const randomBytes = new Uint8Array(16);
-    if (window.crypto && window.crypto.getRandomValues) {
-        window.crypto.getRandomValues(randomBytes);
-    } else {
-        for (let i = 0; i < 16; i++) {
-            randomBytes[i] = Math.floor(Math.random() * 256);
-        }
-    }
-    
-    // Hex string'e dönüştür
-    let salt = '';
-    for (let i = 0; i < randomBytes.length; i++) {
-        salt += randomBytes[i].toString(16).padStart(2, '0');
-    }
-    
-    return salt;
-}
-
-// Oyuna katılma işlemi
-async function joinGameTransaction(gameId, move, stake) {
+// Oyun oluşturma modalında oyun oluştur
+async function createGame() {
     try {
-        // Cüzdan bağlı mı kontrol et
-        if (!signer || !userAddress) {
-            throw new Error("Lütfen önce cüzdanınızı bağlayın");
+        if (!selectedMove || !selectedStake) {
+            alert("Lütfen hamle ve bahis miktarı seçin");
+            return;
         }
         
-        // Oyun bilgilerini kontrol et
-        const gameCheck = await checkGameBeforeJoining(gameId);
-        if (!gameCheck.valid) {
-            throw new Error(gameCheck.error);
+        // Modal'ı kapat
+        closeModal();
+        
+        showResult('create-result', "Oyun oluşturuluyor...", true);
+        
+        // Firebase'de oyun oluştur
+        const gameId = await createFirebaseGame(selectedMove, selectedStake);
+        
+        showResult('create-result', `Oyun başarıyla oluşturuldu! Firebase ID: ${gameId}`, true);
+        
+        // Oyunları yenile
+        loadGames();
+        
+        // Seçimleri sıfırla
+        selectedMove = null;
+        selectedStake = null;
+    } catch (error) {
+        console.error("Oyun oluşturma hatası:", error);
+        showResult('create-result', "Oyun oluşturma hatası: " + error.message, false);
+    }
+}
+
+// Firebase'den oyunları yükle
+async function loadFirebaseGames() {
+    try {
+        if (!firebaseUser) {
+            console.log("Firebase kullanıcısı bulunamadı");
+            return;
         }
         
-        // Move'u sayıya çevir
-        const moveValue = parseInt(move);
+        const gamesList = document.getElementById('games-list');
+        gamesList.innerHTML = '<p>Oyunlar yükleniyor...</p>';
         
-        // Stake'i kontrat'tan al
-        const stakeWei = gameCheck.stake;
+        // Aktif oyunları getir
+        const games = await getFirebaseGames();
         
-        console.log("Oyuna katılma detayları:", {
-            gameId,
-            move: moveValue,
-            stake: ethers.utils.formatEther(stakeWei)
-        });
+        if (games.length === 0) {
+            gamesList.innerHTML = '<p>Aktif oyun bulunamadı. Yeni bir oyun oluşturabilirsiniz.</p>';
+            return;
+        }
         
-        // Gas fiyatını al
-        const feeData = await provider.getFeeData();
-        console.log("Fee data:", {
-            maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, 'gwei'),
-            maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, 'gwei'),
-            gasPrice: ethers.utils.formatUnits(feeData.gasPrice, 'gwei')
-        });
-        
-        console.log("Transaction gönderiliyor...");
-        
-        // Oyuna katıl - BigNumber kullanarak
-        const tx = await contract.joinGame(
-            ethers.BigNumber.from(gameId), 
-            ethers.BigNumber.from(moveValue), 
-            {
-                value: stakeWei,
-                gasLimit: 500000
-            }
+        // Oyunları kategorilere ayır
+        const openGames = games.filter(g => g.state === 'ACTIVE' && g.creatorAddress.toLowerCase() !== userAddress.toLowerCase());
+        const myGames = games.filter(g => 
+            (g.creatorAddress.toLowerCase() === userAddress.toLowerCase() || 
+             g.challengerAddress?.toLowerCase() === userAddress.toLowerCase()) && 
+            g.state !== 'FINISHED'
+        );
+        const finishedGames = games.filter(g => 
+            g.state === 'FINISHED' && 
+            (g.creatorAddress.toLowerCase() === userAddress.toLowerCase() || 
+             g.challengerAddress?.toLowerCase() === userAddress.toLowerCase())
         );
         
-        console.log("Transaction gönderildi:", tx.hash);
-        console.log("Transaction onayı bekleniyor...");
+        let html = `
+            <div class="games-tabs">
+                <div class="tab-buttons">
+                    <button class="tab-button active" data-tab="open-games">Açık Oyunlar (${openGames.length})</button>
+                    <button class="tab-button" data-tab="my-games">Oyunlarım (${myGames.length})</button>
+                    <button class="tab-button" data-tab="finished-games">Tamamlanan (${finishedGames.length})</button>
+                </div>
+                
+                <div class="tab-content">
+                    <div class="tab-pane active" id="open-games">
+                        ${renderGamesList(openGames, 'open')}
+                    </div>
+                    <div class="tab-pane" id="my-games">
+                        ${renderGamesList(myGames, 'my')}
+                    </div>
+                    <div class="tab-pane" id="finished-games">
+                        ${renderGamesList(finishedGames, 'finished')}
+                    </div>
+                </div>
+            </div>
+        `;
         
-        // Transaction'ı bekle
-        const receipt = await tx.wait();
-        console.log("Transaction receipt:", receipt);
+        gamesList.innerHTML = html;
         
-        return receipt;
+        // Tab butonlarına olay dinleyicisi ekle
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                // Aktif tab'ı değiştir
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                button.classList.add('active');
+                
+                // İlgili içeriği göster
+                const tabId = button.getAttribute('data-tab');
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+        
+        // Oyuna katıl butonlarına olay dinleyicisi ekle
+        document.querySelectorAll('.join-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const gameId = button.getAttribute('data-id');
+                const stake = button.getAttribute('data-stake');
+                openJoinGameModal(gameId, stake);
+            });
+        });
+        
+        // Reveal butonlarına olay dinleyicisi ekle
+        document.querySelectorAll('.reveal-btn').forEach(button => {
+            button.addEventListener('click', async () => {
+                const gameId = button.getAttribute('data-id');
+                await revealMove(gameId);
+            });
+        });
     } catch (error) {
-        console.error("Join Transaction detaylı hata:", error);
+        console.error("Oyunları yükleme hatası:", error);
+        document.getElementById('games-list').innerHTML = `
+            <p class="error">Oyunlar yüklenirken bir hata oluştu: ${error.message}</p>
+        `;
+    }
+}
+
+// Oyun listesini render et
+function renderGamesList(games, type) {
+    if (games.length === 0) {
+        return `<p class="no-games">Bu kategoride oyun bulunamadı.</p>`;
+    }
+    
+    let html = '<div class="games-grid">';
+    
+    games.forEach(game => {
+        const stake = game.stake ? ethers.utils.formatEther(game.stake) : '0';
+        const gameId = game.blockchain?.gameId || game.id;
         
-        // Hata mesajını daha detaylı göster
-        let errorMessage = "Bilinmeyen hata";
+        let statusClass = '';
+        let statusText = '';
+        let actionButton = '';
         
-        if (error.reason) {
-            errorMessage = error.reason;
-        } else if (error.message) {
-            errorMessage = error.message;
-            
-            // Revert sebebini çıkarmaya çalış
-            const revertMatch = error.message.match(/reverted with reason string '([^']+)'/);
-            if (revertMatch && revertMatch[1]) {
-                errorMessage = revertMatch[1];
+        if (type === 'open') {
+            statusClass = 'status-open';
+            statusText = 'Açık';
+            actionButton = `
+                <button class="btn primary join-btn" data-id="${game.id}" data-stake="${stake}">
+                    Oyuna Katıl
+                </button>
+            `;
+        } else if (type === 'my') {
+            if (game.state === 'CREATED') {
+                statusClass = 'status-pending';
+                statusText = 'Onay Bekleniyor';
+                actionButton = '';
+            } else if (game.state === 'ACTIVE') {
+                statusClass = 'status-active';
+                statusText = 'Rakip Bekleniyor';
+                actionButton = '';
+            } else if (game.state === 'JOINED') {
+                statusClass = 'status-joined';
+                statusText = 'Katılım Sağlandı';
+                
+                if (game.creatorAddress.toLowerCase() === userAddress.toLowerCase()) {
+                    actionButton = `
+                        <button class="btn primary reveal-btn" data-id="${game.id}">
+                            Hamleyi Açıkla
+                        </button>
+                    `;
+                } else {
+                    actionButton = `
+                        <div class="waiting-reveal">Açıklama Bekleniyor</div>
+                    `;
+                }
             }
+        } else if (type === 'finished') {
+            statusClass = 'status-finished';
+            
+            let resultText = '';
+            if (game.winnerAddress) {
+                if (game.winnerAddress.toLowerCase() === userAddress.toLowerCase()) {
+                    resultText = 'Kazandınız!';
+                    statusClass += ' status-won';
+                } else {
+                    resultText = 'Kaybettiniz';
+                    statusClass += ' status-lost';
+                }
+            } else {
+                resultText = 'Berabere';
+                statusClass += ' status-tie';
+            }
+            
+            statusText = resultText;
+            actionButton = `
+                <div class="game-result">
+                    <div class="moves">
+                        <span class="move">${moveToString(game.creatorMove)}</span>
+                        <span class="vs">vs</span>
+                        <span class="move">${moveToString(game.challengerMove)}</span>
+                    </div>
+                </div>
+            `;
         }
         
-        throw new Error(errorMessage);
-    }
+        html += `
+            <div class="game-card ${statusClass}">
+                <div class="game-header">
+                    <span class="game-id">Oyun #${gameId}</span>
+                    <span class="game-stake">${stake} ETH</span>
+                </div>
+                <div class="game-info">
+                    <div class="game-creator">
+                        <span class="label">Oluşturan:</span>
+                        <span class="value">${shortenAddress(game.creatorAddress)}</span>
+                    </div>
+                    ${game.challengerAddress ? `
+                        <div class="game-challenger">
+                            <span class="label">Rakip:</span>
+                            <span class="value">${shortenAddress(game.challengerAddress)}</span>
+                        </div>
+                    ` : ''}
+                    <div class="game-status">
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </div>
+                </div>
+                <div class="game-actions">
+                    ${actionButton}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    return html;
 }
 
 // Oyun detaylarını yükle
@@ -1479,68 +1537,6 @@ async function checkGameBeforeJoining(gameId) {
     }
 }
 
-// Firebase'den oyunları yükle
-async function loadFirebaseGames() {
-    try {
-        if (!firebaseUser) {
-            console.log("Firebase kullanıcısı bulunamadı");
-            return;
-        }
-        
-        const gamesList = document.getElementById('games-list');
-        gamesList.innerHTML = '<p>Oyunlar yükleniyor...</p>';
-        
-        // Aktif oyunları getir
-        const games = await getFirebaseGames();
-        
-        if (games.length === 0) {
-            gamesList.innerHTML = '<p>Aktif oyun bulunamadı. Yeni bir oyun oluşturabilirsiniz.</p>';
-            return;
-        }
-        
-        let html = '<div class="games-grid">';
-        
-        games.forEach(game => {
-            const stake = game.stake ? ethers.utils.formatEther(game.stake) : '0';
-            
-            html += `
-                <div class="game-card">
-                    <div class="game-header">
-                        <span class="game-id">Oyun #${game.blockchain?.gameId || game.id}</span>
-                        <span class="game-stake">${stake} ETH</span>
-                    </div>
-                    <div class="game-creator">
-                        <span class="label">Oluşturan:</span>
-                        <span class="value">${shortenAddress(game.creatorAddress)}</span>
-                    </div>
-                    <div class="game-actions">
-                        <button class="btn primary join-btn" data-id="${game.id}" data-stake="${stake}">
-                            Oyuna Katıl
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-        
-        html += '</div>';
-        gamesList.innerHTML = html;
-        
-        // Oyuna katıl butonlarına olay dinleyicisi ekle
-        document.querySelectorAll('.join-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                const gameId = button.getAttribute('data-id');
-                const stake = button.getAttribute('data-stake');
-                openJoinGameModal(gameId, stake);
-            });
-        });
-    } catch (error) {
-        console.error("Oyunları yükleme hatası:", error);
-        document.getElementById('games-list').innerHTML = `
-            <p class="error">Oyunlar yüklenirken bir hata oluştu: ${error.message}</p>
-        `;
-    }
-}
-
 // Firebase'de oyun oluştur
 async function createFirebaseGame(move, stake) {
     try {
@@ -1585,12 +1581,12 @@ async function createFirebaseGame(move, stake) {
     }
 }
 
-// Blockchain'de oyun oluştur (arka planda)
-async function createBlockchainGame(gameId, commitHash, salt, stake) {
+// Blockchain'de oyun oluştur
+async function createBlockchainGame(firebaseGameId, commitHash, stake) {
     try {
         // Blockchain'e oyun oluştur
         const stakeWei = ethers.utils.parseEther(stake.toString());
-        const tx = await contract.createGame(commitHash, salt, {
+        const tx = await contract.createGame(commitHash, {
             value: stakeWei,
             gasLimit: 500000
         });
@@ -1598,7 +1594,7 @@ async function createBlockchainGame(gameId, commitHash, salt, stake) {
         console.log("Blockchain transaction gönderildi:", tx.hash);
         
         // Firebase'i güncelle
-        await db.collection('games').doc(gameId).update({
+        await db.collection('games').doc(firebaseGameId).update({
             'blockchain.txHash': tx.hash,
             'blockchain.pending': true
         });
@@ -1608,21 +1604,23 @@ async function createBlockchainGame(gameId, commitHash, salt, stake) {
         
         // Başarılı ise Firebase'i güncelle
         if (receipt.status === 1) {
-            // Blockchain'den oyun ID'sini al
-            const blockchainGameId = await getGameIdFromReceipt(receipt);
-            
-            await db.collection('games').doc(gameId).update({
-                'blockchain.confirmed': true,
-                'blockchain.pending': false,
-                'blockchain.gameId': blockchainGameId,
-                'state': 'ACTIVE'
-            });
-            
-            // Oyun listesini güncelle
-            loadFirebaseGames();
+            // GameCreated olayını bul
+            const event = receipt.events.find(e => e.event === 'GameCreated');
+            if (event) {
+                const gameId = event.args.gameId.toString();
+                
+                await db.collection('games').doc(firebaseGameId).update({
+                    'blockchain.gameId': gameId,
+                    'blockchain.confirmed': true,
+                    'blockchain.pending': false,
+                    'state': 'ACTIVE'
+                });
+                
+                console.log("Blockchain oyun oluşturuldu, ID:", gameId);
+            }
         } else {
             // Başarısız ise hata durumunu güncelle
-            await db.collection('games').doc(gameId).update({
+            await db.collection('games').doc(firebaseGameId).update({
                 'blockchain.confirmed': false,
                 'blockchain.pending': false,
                 'blockchain.error': 'Transaction failed',
@@ -1635,7 +1633,7 @@ async function createBlockchainGame(gameId, commitHash, salt, stake) {
         console.error("Blockchain oyun oluşturma hatası:", error);
         
         // Hata durumunu Firebase'e kaydet
-        await db.collection('games').doc(gameId).update({
+        await db.collection('games').doc(firebaseGameId).update({
             'blockchain.confirmed': false,
             'blockchain.pending': false,
             'blockchain.error': error.message,

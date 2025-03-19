@@ -71,21 +71,40 @@ const listenToBlockchainEvents = () => {
     contract.on('GameCreated', async (gameId, creator, stake, event) => {
         console.log('Yeni oyun oluşturuldu:', gameId.toString());
         
-        // Firebase'de bu oyunu bul
-        const gamesSnapshot = await admin.firestore()
-            .collection('games')
-            .where('creatorAddress', '==', creator)
-            .where('blockchain.confirmed', '==', false)
-            .where('blockchain.txHash', '==', event.transactionHash)
-            .get();
-        
-        if (!gamesSnapshot.empty) {
-            const gameDoc = gamesSnapshot.docs[0];
-            await gameDoc.ref.update({
-                'blockchain.confirmed': true,
-                'blockchain.gameId': gameId.toString(),
-                'state': 'ACTIVE'
-            });
+        try {
+            // Firebase'de bu oyunu bul
+            const gamesSnapshot = await db.collection('games')
+                .where('creatorAddress', '==', creator.toLowerCase())
+                .where('blockchain.confirmed', '==', false)
+                .orderBy('createdAt', 'desc')
+                .limit(1)
+                .get();
+            
+            if (!gamesSnapshot.empty) {
+                const gameDoc = gamesSnapshot.docs[0];
+                await gameDoc.ref.update({
+                    'blockchain.confirmed': true,
+                    'blockchain.gameId': gameId.toString(),
+                    'state': 'ACTIVE'
+                });
+                console.log('Firebase oyunu güncellendi:', gameDoc.id);
+            } else {
+                // Firebase'de kayıt bulunamadıysa, yeni bir kayıt oluştur
+                await db.collection('games').add({
+                    creatorAddress: creator.toLowerCase(),
+                    stake: stake.toString(),
+                    state: 'ACTIVE',
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    blockchain: {
+                        confirmed: true,
+                        gameId: gameId.toString(),
+                        txHash: event.transactionHash
+                    }
+                });
+                console.log('Yeni Firebase oyunu oluşturuldu (blockchain olayından)');
+            }
+        } catch (error) {
+            console.error('GameCreated olay işleme hatası:', error);
         }
     });
     
@@ -93,28 +112,68 @@ const listenToBlockchainEvents = () => {
     contract.on('GameJoined', async (gameId, challenger, stake, event) => {
         console.log('Oyuna katılım:', gameId.toString());
         
-        // Firebase'de bu oyunu bul
-        const gamesSnapshot = await admin.firestore()
-            .collection('games')
-            .where('blockchain.gameId', '==', gameId.toString())
-            .get();
+        try {
+            // Firebase'de bu oyunu bul
+            const gamesSnapshot = await db.collection('games')
+                .where('blockchain.gameId', '==', gameId.toString())
+                .limit(1)
+                .get();
+            
+            if (!gamesSnapshot.empty) {
+                const gameDoc = gamesSnapshot.docs[0];
+                
+                await gameDoc.ref.update({
+                    'challengerAddress': challenger.toLowerCase(),
+                    'blockchain.joinConfirmed': true,
+                    'blockchain.joinTxHash': event.transactionHash,
+                    'state': 'JOINED'
+                });
+                console.log('Firebase oyunu güncellendi (katılım):', gameDoc.id);
+            }
+        } catch (error) {
+            console.error('GameJoined olay işleme hatası:', error);
+        }
+    });
+    
+    // GameRevealed olayını dinle
+    contract.on('GameRevealed', async (gameId, creatorMove, challengerMove, winner, event) => {
+        console.log('Oyun sonuçlandı:', gameId.toString());
         
-        if (!gamesSnapshot.empty) {
-            const gameDoc = gamesSnapshot.docs[0];
+        try {
+            // Firebase'de bu oyunu bul
+            const gamesSnapshot = await db.collection('games')
+                .where('blockchain.gameId', '==', gameId.toString())
+                .limit(1)
+                .get();
             
-            // Oyun sonucunu blockchain'den al
-            const gameResult = await contract.getGameResult(gameId);
-            
-            await gameDoc.ref.update({
-                'blockchain.joinConfirmed': true,
-                'blockchain.joinTxHash': event.transactionHash,
-                'state': 'FINISHED',
-                'result': gameResult.winner,
-                'finishedAt': admin.firestore.FieldValue.serverTimestamp()
-            });
-            
-            // Kullanıcı istatistiklerini güncelle
-            updateUserStats(gameDoc.data(), gameResult);
+            if (!gamesSnapshot.empty) {
+                const gameDoc = gamesSnapshot.docs[0];
+                const gameData = gameDoc.data();
+                
+                // Kazanan adresini belirle
+                let winnerAddress = null;
+                if (winner !== ethers.constants.AddressZero) {
+                    winnerAddress = winner.toLowerCase();
+                }
+                
+                await gameDoc.ref.update({
+                    'creatorMove': parseInt(creatorMove),
+                    'challengerMove': parseInt(challengerMove),
+                    'winnerAddress': winnerAddress,
+                    'state': 'FINISHED',
+                    'finishedAt': admin.firestore.FieldValue.serverTimestamp()
+                });
+                console.log('Firebase oyunu güncellendi (sonuç):', gameDoc.id);
+                
+                // Kullanıcı istatistiklerini güncelle
+                await updateUserStats(gameData, {
+                    winner: winnerAddress,
+                    creatorMove: parseInt(creatorMove),
+                    challengerMove: parseInt(challengerMove)
+                });
+            }
+        } catch (error) {
+            console.error('GameRevealed olay işleme hatası:', error);
         }
     });
 };

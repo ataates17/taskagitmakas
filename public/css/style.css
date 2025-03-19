@@ -1009,4 +1009,209 @@ footer {
     background-color: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
+}
+
+/* Oyun kartları için stil */
+.games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.game-card {
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.game-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.game-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.game-id {
+    font-weight: 600;
+    color: #333;
+}
+
+.game-stake {
+    font-weight: 600;
+    color: #4CAF50;
+}
+
+.game-info {
+    margin-bottom: 15px;
+}
+
+.game-creator, .game-challenger {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.label {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.value {
+    font-weight: 500;
+    color: #333;
+}
+
+.game-status {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.status-open {
+    background-color: #E3F2FD;
+    color: #1976D2;
+}
+
+.status-pending {
+    background-color: #FFF8E1;
+    color: #FFA000;
+}
+
+.status-active {
+    background-color: #E8F5E9;
+    color: #388E3C;
+}
+
+.status-joined {
+    background-color: #E0F7FA;
+    color: #00ACC1;
+}
+
+.status-finished {
+    background-color: #F3E5F5;
+    color: #7B1FA2;
+}
+
+.status-won {
+    background-color: #E8F5E9;
+    color: #388E3C;
+}
+
+.status-lost {
+    background-color: #FFEBEE;
+    color: #D32F2F;
+}
+
+.status-tie {
+    background-color: #F5F5F5;
+    color: #616161;
+}
+
+.game-actions {
+    margin-top: 15px;
+    display: flex;
+    justify-content: center;
+}
+
+.waiting-reveal {
+    color: #FFA000;
+    font-style: italic;
+    text-align: center;
+}
+
+.game-result {
+    width: 100%;
+}
+
+.game-result .moves {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+.game-result .move {
+    font-weight: 600;
+    color: #333;
+}
+
+.game-result .vs {
+    color: #999;
+    font-size: 0.8rem;
+}
+
+/* Tab sistemi */
+.games-tabs {
+    margin-top: 20px;
+}
+
+.tab-buttons {
+    display: flex;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    color: #666;
+    position: relative;
+}
+
+.tab-button:hover {
+    color: #333;
+}
+
+.tab-button.active {
+    color: #1976D2;
+}
+
+.tab-button.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: #1976D2;
+}
+
+.tab-content {
+    position: relative;
+}
+
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+.no-games {
+    text-align: center;
+    color: #666;
+    margin: 30px 0;
 } 
