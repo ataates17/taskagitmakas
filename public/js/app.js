@@ -284,22 +284,23 @@ async function loadPlatformStats() {
 // Oyunları yükle ve kategorilere ayır
 async function loadGames() {
     try {
-        const gameId = 0; // Örnek olarak ilk oyunu yüklüyoruz
-        const game = await contract.games(gameId);
+        const gameCount = await contract.gameCount();
+        const gamesList = document.getElementById('games-list');
+        gamesList.innerHTML = ''; // Mevcut içeriği temizle
 
-        console.log("Oyun bilgileri:", game);
+        for (let i = 0; i < gameCount; i++) {
+            const game = await contract.games(i);
 
-        // Oyun bilgilerini kullanarak arayüzü güncelleyin
-        const gameInfoDiv = document.getElementById('game-info');
-        if (gameInfoDiv) {
-            gameInfoDiv.innerHTML = `
-                <p>Oyun ID: ${gameId}</p>
+            // Oyun bilgilerini kullanarak arayüzü güncelleyin
+            const gameItem = document.createElement('div');
+            gameItem.className = 'game-item';
+            gameItem.innerHTML = `
+                <p>Oyun ID: ${i}</p>
                 <p>Yaratıcı: ${game.creator}</p>
                 <p>Bahis: ${ethers.utils.formatEther(game.stake)} ETH</p>
                 <p>Durum: ${game.finished ? "Bitti" : "Devam Ediyor"}</p>
             `;
-        } else {
-            console.error("game-info elemanı bulunamadı.");
+            gamesList.appendChild(gameItem);
         }
     } catch (error) {
         console.error("Oyun yüklenirken hata:", error);
