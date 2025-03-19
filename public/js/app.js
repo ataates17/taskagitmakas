@@ -156,30 +156,26 @@ async function connectWallet() {
                 throw new Error("Kullanıcı cüzdan erişimine izin vermedi");
             }
             
-            // Provider'ı yeniden başlat
-            provider = new ethers.providers.Web3Provider(window.ethereum);
+            // Signer'ı ayarla
             signer = provider.getSigner();
-            userAddress = await signer.getAddress();
+            userAddress = accounts[0];
+            
+            // Kontratı signer ile bağla
+            contract = new ethers.Contract(contractAddress, contractABI, signer);
             
             // Bağlı cüzdan bilgisini göster
             const walletInfo = document.getElementById('wallet-info');
             walletInfo.textContent = shortenAddress(userAddress);
             walletInfo.style.display = 'block';
             
-            // Kontratı signer ile bağla
-            contract = new ethers.Contract(contractAddress, contractABI, signer);
-            
             // Cüzdan adresi ile kullanıcı oluştur veya giriş yap
             await signInWithWalletAddress();
             
+            // Kullanıcı bilgilerini yükle
+            await loadUserInfo();
+            
             // Oyunları yükle
             loadGames();
-            
-            // Kullanıcı bilgilerini yükle
-            loadUserInfo();
-            
-            // Oyun durumunu dinle ve otomatik reveal yap
-            await setupGameEventListeners();
             
             return true;
         } else {
@@ -463,16 +459,16 @@ function renderGamesList(games, type) {
     let html = '<div class="games-grid">';
     
     games.forEach(game => {
-        const stake = game.stake ? ethers.utils.formatEther(game.stake) : '0';
-        const gameId = game.blockchain?.gameId || game.id;
+        const gameId = game.blockchain?.gameId || 'Bekliyor';
+        const stake = weiToEth(game.stake);
         
-        let statusClass = '';
         let statusText = '';
+        let statusClass = '';
         let actionButton = '';
         
         if (type === 'open') {
             statusClass = 'status-open';
-            statusText = 'Açık';
+            statusText = 'Katılıma Açık';
             actionButton = `
                 <button class="btn primary join-btn" data-id="${game.id}" data-stake="${stake}">
                     Oyuna Katıl
@@ -1171,5 +1167,128 @@ async function updateUserStats(gameData, result) {
         }
     } catch (error) {
         console.error("Kullanıcı istatistikleri güncelleme hatası:", error);
+    }
+}
+
+// Kullanıcı bilgilerini yükle
+async function loadUserInfo() {
+    try {
+        if (!firebaseUser || !userAddress) {
+            return;
+        }
+        
+        // Kullanıcı profilini getir
+        const userSnapshot = await db.collection('users')
+            .where('walletAddress', '==', userAddress.toLowerCase())
+            .limit(1)
+            .get();
+            
+        if (userSnapshot.empty) {
+            console.log("Kullanıcı profili bulunamadı");
+            return;
+        }
+        
+        const userDoc = userSnapshot.docs[0];
+        const userData = userDoc.data();
+        
+        // Kullanıcı istatistiklerini göster
+        const statsContainer = document.createElement('div');
+        statsContainer.className = 'user-stats';
+        statsContainer.innerHTML = `
+            <h3>Oyun İstatistikleri</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value">${userData.gamesPlayed || 0}</span>
+                    <span class="stat-label">Toplam Oyun</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">${userData.gamesWon || 0}</span>
+                    <span class="stat-label">Kazanılan</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">${userData.gamesLost || 0}</span>
+                    <span class="stat-label">Kaybedilen</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">${userData.gamesTied || 0}</span>
+                    <span class="stat-label">Berabere</span>
+                </div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value">${weiToEth(userData.totalStaked || 0)} ETH</span>
+                    <span class="stat-label">Toplam Bahis</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">${weiToEth(userData.totalWon || 0)} ETH</span>
+                    <span class="stat-label">Kazanılan</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">${weiToEth(userData.totalLost || 0)} ETH</span>
+                    <span class="stat-label">Kaybedilen</span>
+                </div>
+            </div>
+        `;
+        
+        // Kullanıcı istatistiklerini sayfaya ekle
+        const walletInfo = document.getElementById('wallet-info');
+        walletInfo.appendChild(statsContainer);
+    } catch (error) {
+        console.error("Kullanıcı bilgileri yükleme hatası:", error);
+    }
+}
+
+// Firebase'den oyunları getir
+async function getFirebaseGames() {
+    try {
+        // Önce ACTIVE oyunları getir
+        const activeGamesSnapshot = await db.collection('games')
+            .where('state', '==', 'ACTIVE')
+            .orderBy('createdAt', 'desc')
+            .limit(20)
+            .get();
+        
+        // Sonra JOINED oyunları getir
+        const joinedGamesSnapshot = await db.collection('games')
+            .where('state', '==', 'JOINED')
+            .orderBy('createdAt', 'desc')
+            .limit(20)
+            .get();
+        
+        // Son olarak FINISHED oyunları getir
+        const finishedGamesSnapshot = await db.collection('games')
+            .where('state', '==', 'FINISHED')
+            .orderBy('createdAt', 'desc')
+            .limit(20)
+            .get();
+        
+        // Tüm oyunları birleştir
+        const games = [];
+        
+        activeGamesSnapshot.forEach(doc => {
+            games.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+        
+        joinedGamesSnapshot.forEach(doc => {
+            games.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+        
+        finishedGamesSnapshot.forEach(doc => {
+            games.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+        
+        return games;
+    } catch (error) {
+        console.error("Oyun listesi hatası:", error);
+        return [];
     }
 } 
