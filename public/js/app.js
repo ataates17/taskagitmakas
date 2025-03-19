@@ -5,6 +5,10 @@ let contract;
 let userAddress;
 let gameCreationData = {}; // Oyun oluşturma verilerini saklamak için
 
+// Modal işlemleri
+let selectedMove = null;
+let selectedStake = null;
+
 // Sayfa yüklendiğinde
 document.addEventListener('DOMContentLoaded', async () => {
     // Kontrat adresini göster
@@ -994,4 +998,181 @@ async function cancelGame(gameId) {
         alert("Oyun iptal edilirken hata: " + error.message);
         throw error;
     }
-} 
+}
+
+// Modal'ı aç
+function openCreateGameModal() {
+    document.getElementById('create-game-modal').style.display = 'block';
+    document.getElementById('modal-overlay').style.display = 'block';
+    document.body.style.overflow = 'hidden'; // Sayfanın kaydırılmasını engelle
+    
+    // Seçimleri sıfırla
+    resetModalSelections();
+}
+
+// Modal'ı kapat
+function closeCreateGameModal() {
+    document.getElementById('create-game-modal').style.display = 'none';
+    document.getElementById('modal-overlay').style.display = 'none';
+    document.body.style.overflow = 'auto'; // Sayfanın kaydırılmasını tekrar etkinleştir
+}
+
+// Modal seçimlerini sıfırla
+function resetModalSelections() {
+    selectedMove = null;
+    selectedStake = null;
+    
+    // Seçimleri temizle
+    document.querySelectorAll('.move-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    document.querySelectorAll('.stake-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    document.getElementById('custom-stake').value = '';
+    
+    // Özet bilgilerini güncelle
+    updateSelectionSummary();
+    
+    // Oluştur butonunu devre dışı bırak
+    document.getElementById('modal-create-game').disabled = true;
+}
+
+// Seçim özetini güncelle
+function updateSelectionSummary() {
+    const moveValue = document.querySelector('.selected-move .value');
+    const stakeValue = document.querySelector('.selected-stake .value');
+    
+    // Hamle seçimi
+    if (selectedMove === 1) {
+        moveValue.textContent = 'Taş';
+    } else if (selectedMove === 2) {
+        moveValue.textContent = 'Kağıt';
+    } else if (selectedMove === 3) {
+        moveValue.textContent = 'Makas';
+    } else {
+        moveValue.textContent = 'Seçilmedi';
+    }
+    
+    // Bahis seçimi
+    if (selectedStake) {
+        stakeValue.textContent = `${selectedStake} ETH`;
+    } else {
+        stakeValue.textContent = 'Seçilmedi';
+    }
+    
+    // Oluştur butonunu etkinleştir/devre dışı bırak
+    const createButton = document.getElementById('modal-create-game');
+    if (selectedMove && selectedStake) {
+        createButton.disabled = false;
+    } else {
+        createButton.disabled = true;
+    }
+}
+
+// Event listener'ları ekle
+document.addEventListener('DOMContentLoaded', function() {
+    // Yeni oyun oluştur butonuna tıklandığında
+    document.getElementById('create-game').addEventListener('click', function() {
+        openCreateGameModal();
+    });
+    
+    // Modal'ı kapatma butonları
+    document.querySelector('.close-modal').addEventListener('click', closeCreateGameModal);
+    document.querySelector('.cancel-modal').addEventListener('click', closeCreateGameModal);
+    document.getElementById('modal-overlay').addEventListener('click', closeCreateGameModal);
+    
+    // Hamle seçimi
+    document.querySelectorAll('.move-option').forEach(option => {
+        option.addEventListener('click', function() {
+            // Önceki seçimi temizle
+            document.querySelectorAll('.move-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Yeni seçimi işaretle
+            this.classList.add('selected');
+            selectedMove = parseInt(this.getAttribute('data-move'));
+            
+            // Özeti güncelle
+            updateSelectionSummary();
+        });
+    });
+    
+    // Bahis seçimi (hazır opsiyonlar)
+    document.querySelectorAll('.stake-option:not(.custom)').forEach(option => {
+        option.addEventListener('click', function() {
+            // Önceki seçimi temizle
+            document.querySelectorAll('.stake-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Yeni seçimi işaretle
+            this.classList.add('selected');
+            selectedStake = parseFloat(this.getAttribute('data-stake'));
+            
+            // Özel girişi temizle
+            document.getElementById('custom-stake').value = '';
+            
+            // Özeti güncelle
+            updateSelectionSummary();
+        });
+    });
+    
+    // Özel bahis girişi
+    document.getElementById('custom-stake').addEventListener('input', function() {
+        const value = parseFloat(this.value);
+        
+        if (value && value >= 0.001) {
+            // Önceki seçimi temizle
+            document.querySelectorAll('.stake-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Özel seçeneği işaretle
+            this.parentElement.classList.add('selected');
+            selectedStake = value;
+            
+            // Özeti güncelle
+            updateSelectionSummary();
+        } else {
+            selectedStake = null;
+            this.parentElement.classList.remove('selected');
+            updateSelectionSummary();
+        }
+    });
+    
+    // Modal içinde oyun oluştur butonuna tıklandığında
+    document.getElementById('modal-create-game').addEventListener('click', async function() {
+        if (selectedMove && selectedStake) {
+            try {
+                // Loading mesajı göster
+                const resultDiv = document.getElementById('create-result');
+                resultDiv.innerHTML = "Oyun oluşturuluyor...";
+                resultDiv.className = "result pending";
+                
+                // Modal'ı kapat
+                closeCreateGameModal();
+                
+                // Oyun oluştur
+                const receipt = await createGameTransaction(selectedMove, selectedStake);
+                
+                // Başarı mesajı göster
+                resultDiv.innerHTML = `Oyun başarıyla oluşturuldu! Transaction: ${receipt.transactionHash}`;
+                resultDiv.className = "result success";
+                
+                // Oyun listesini güncelle
+                await loadGames();
+                
+            } catch (error) {
+                console.error("Oyun oluşturma hatası:", error);
+                // Hata mesajı göster
+                const resultDiv = document.getElementById('create-result');
+                resultDiv.innerHTML = "Hata: " + error.message;
+                resultDiv.className = "result error";
+            }
+        }
+    });
+}); 
