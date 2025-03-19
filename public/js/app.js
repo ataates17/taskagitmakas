@@ -235,12 +235,12 @@ async function loadGameDetails() {
             throw new Error("Geçersiz oyun ID");
         }
 
-        const gameInfo = await contract.getGameInfo(gameIdNum);
-        if (!gameInfo || !gameInfo.creator || gameInfo.creator === ethers.constants.AddressZero) {
+        const game = await contract.games(gameIdNum);
+        if (!game || !game.creator || game.creator === ethers.constants.AddressZero) {
             throw new Error("Oyun bulunamadı");
         }
 
-        const stake = ethers.utils.formatEther(gameInfo.stake);
+        const stake = ethers.utils.formatEther(game.stake);
         
         // Bahis miktarını güncelle
         document.getElementById('join-stake').value = stake;
