@@ -157,24 +157,26 @@
             <!-- Overlay -->
             <div id="modal-overlay" class="modal-overlay"></div>
 
-            <!-- Reveal açıklaması -->
+            <!-- Oyun açıklaması -->
             <div class="info-box">
-                <h4>Reveal İşlemi Nedir?</h4>
-                <p>Taş-Kağıt-Makas oyununda, hamlelerin gizli tutulması için iki aşamalı bir süreç kullanılır:</p>
+                <h4>Taş Kağıt Makas Oyunu Nasıl Çalışır?</h4>
+                <p>Taş-Kağıt-Makas oyunu blockchain üzerinde tamamen şeffaf ve adil bir şekilde oynanır:</p>
                 <ol>
-                    <li><strong>Hamle Oluşturma:</strong> Oyun yaratıcısı hamlesini şifrelenmiş olarak gönderir.</li>
-                    <li><strong>Hamle Açıklama (Reveal):</strong> Meydan okuyan oyuncu hamlesini gönderdikten sonra, oyun yaratıcısı kendi hamlesini açıklar ve sonuç belirlenir.</li>
+                    <li><strong>Oyun Oluşturma:</strong> Bir oyuncu hamlesini gizli olarak seçer ve bahis miktarını belirler.</li>
+                    <li><strong>Oyuna Katılma:</strong> Başka bir oyuncu kendi hamlesini seçerek oyuna katılır.</li>
+                    <li><strong>Sonuç:</strong> Sistem otomatik olarak ilk oyuncunun hamlesini açıklar ve kazanan belirlenir.</li>
                 </ol>
-                <p>Eğer bir oyun yaratıcısıysanız ve oyununuza birisi katıldıysa, reveal işlemi yapmanız gerekir.</p>
+                <p>Klasik kurallar geçerlidir: Taş makası, makas kağıdı, kağıt taşı yener. Aynı hamle berabere sonuçlanır.</p>
             </div>
 
-            <div class="auto-reveal-option">
+            <!-- Otomatik reveal seçeneği - artık gerekli değil -->
+            <!-- <div class="auto-reveal-option">
                 <label class="checkbox-container">
                     <input type="checkbox" id="auto-reveal" checked>
                     <span class="checkmark"></span>
                     Otomatik Reveal (Birisi oyuna katıldığında otomatik olarak reveal işlemi yap)
                 </label>
-            </div>
+            </div> -->
 
             <!-- Oyuna katılma popup'ı -->
             <div id="join-game-modal" class="modal">

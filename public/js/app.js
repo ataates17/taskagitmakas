@@ -119,52 +119,76 @@ async function createGameTransaction(move, stake) {
             throw new Error(`Lütfen ${waitTime} saniye bekleyin`);
         }
 
-        // Gas limitini ve fiyatını kontrol et
-        const gasPrice = await provider.getGasPrice();
-        const gasLimit = await contract.estimateGas.createGame(move, {
-            value: stakeWei
-        });
+        // Rastgele bir salt değeri oluştur
+        const salt = generateRandomSalt();
+        
+        // Commit hash'i oluştur
+        const commitHash = ethers.utils.solidityKeccak256(
+            ["uint8", "string"],
+            [move, salt]
+        );
         
         console.log("Transaction detayları:", {
+            commitHash,
+            salt,
             move,
-            stakeWei: stakeWei.toString(),
-            gasLimit: gasLimit.toString(),
-            gasPrice: gasPrice.toString()
+            stakeWei: stakeWei.toString()
         });
 
-        // Move değerini uint8 olarak gönder
-        const tx = await contract.createGame(move, {
+        // Commit hash'i ve salt değerini gönder
+        const tx = await contract.createGame(commitHash, salt, {
             value: stakeWei,
-            gasLimit: gasLimit.mul(120).div(100), // %20 buffer
-            gasPrice: gasPrice
+            gasLimit: 200000
         });
-        
-        console.log("Transaction gönderildi:", tx.hash);
-        
+
+        // Transaction'ı bekle
         const receipt = await tx.wait();
-        console.log("Transaction onaylandı:", receipt);
-        
-        if (receipt.status === 0) {
-            throw new Error("Transaction başarısız oldu");
-        }
-        
+        console.log("Transaction receipt:", receipt);
+
         return receipt;
-        
     } catch (error) {
-        console.error("Transaction detaylı hata:", error);
-        
-        // Kontrat hata mesajını çıkar
-        let errorMessage = "Oyun oluşturulurken bir hata oluştu";
-        if (error.error && error.error.message) {
-            errorMessage = error.error.message;
-        } else if (error.message && error.message.includes("execution reverted")) {
-            // Revert sebebini bul
-            const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
-            errorMessage = revertReason;
-        }
-        
-        throw new Error(errorMessage);
+        console.error("Oyun oluşturma hatası:", error);
+        throw error;
     }
+}
+
+// Daha güvenli rastgele salt değeri oluştur
+function generateRandomSalt() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
+    let salt = '';
+    
+    // Daha uzun ve karmaşık bir salt değeri oluştur
+    const length = 48; // 48 karakter uzunluğunda
+    
+    // Crypto API kullanarak daha güvenli rastgele değerler üret
+    const randomValues = new Uint8Array(length);
+    if (window.crypto && window.crypto.getRandomValues) {
+        window.crypto.getRandomValues(randomValues);
+    } else {
+        // Fallback: Daha az güvenli ama yine de kullanılabilir
+        for (let i = 0; i < length; i++) {
+            randomValues[i] = Math.floor(Math.random() * 256);
+        }
+    }
+    
+    // Rastgele değerleri karakterlere dönüştür
+    for (let i = 0; i < length; i++) {
+        salt += chars.charAt(randomValues[i] % chars.length);
+    }
+    
+    // Zaman damgası ekleyerek benzersizliği artır
+    salt += Date.now().toString();
+    
+    // Kullanıcı adresini ekleyerek benzersizliği artır
+    if (userAddress) {
+        salt += userAddress.substring(2, 10);
+    }
+    
+    // Tarayıcı parmak izi ekleyerek benzersizliği artır
+    salt += navigator.userAgent;
+    
+    // Son olarak hash'leyerek sabit uzunlukta bir değer elde et
+    return ethers.utils.id(salt).substring(2, 66);
 }
 
 // Oyuna katılma işleyicisi
@@ -430,13 +454,13 @@ function renderGameTabs(openGames, activeGames, finishedGames) {
 }
 
 // Oyun tablosunu oluştur
-function renderGamesTable(games, tableType) {
+function renderGamesTable(games, type) {
     if (games.length === 0) {
         const emptyMessage = document.createElement('p');
         
-        if (tableType === 'open') {
+        if (type === 'open') {
             emptyMessage.textContent = 'Katılabileceğiniz açık oyun bulunmuyor.';
-        } else if (tableType === 'active') {
+        } else if (type === 'active') {
             emptyMessage.textContent = 'Aktif oyununuz bulunmuyor.';
         } else {
             emptyMessage.textContent = 'Tamamlanan oyununuz bulunmuyor.';
@@ -485,18 +509,9 @@ function renderGamesTable(games, tableType) {
                     actionButton = `<button class="btn small primary" onclick="prepareJoinGame(${game.id})">Katıl</button>`;
                 }
                 break;
-            case 1: // Joined
-                statusBadge = '<span class="status-badge status-joined">Katılındı</span>';
-                if (game.creator === userAddress) {
-                    actionButton = `<button class="btn small primary" onclick="handleRevealMove(${game.id})">Reveal</button>`;
-                } else if (game.challenger === userAddress) {
-                    statusBadge = '<span class="status-badge status-joined">Reveal Bekleniyor</span>';
-                }
+            case 1: // Joined - Bu durum artık kullanılmıyor, oyunlar hemen sonuçlanıyor
                 break;
-            case 2: // Revealed
-                statusBadge = '<span class="status-badge status-revealed">Açıklandı</span>';
-                break;
-            case 3: // Finished
+            case 2: // Finished
                 statusBadge = '<span class="status-badge status-finished">Tamamlandı</span>';
                 if (game.winner === userAddress) {
                     statusBadge += ' <span class="badge win-badge">Kazandınız!</span>';
@@ -506,6 +521,9 @@ function renderGamesTable(games, tableType) {
                 } else if (game.winner === ethers.constants.AddressZero) {
                     statusBadge += ' <span class="badge draw-badge">Berabere</span>';
                 }
+                break;
+            case 3: // Cancelled
+                statusBadge = '<span class="status-badge status-cancelled">İptal Edildi</span>';
                 break;
         }
         
@@ -1157,92 +1175,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Oyun durumunu kontrol et ve gerekirse reveal hatırlatıcısı göster
 async function checkGamesForReveal() {
-    try {
-        if (!contract || !userAddress) return;
-        
-        // Toplam oyun sayısını al
-        const gameCount = await contract.gameCount();
-        
-        // Son 20 oyunu kontrol et
-        for (let i = gameCount.toNumber() - 1; i >= Math.max(0, gameCount.toNumber() - 20); i--) {
-            try {
-                // Oyun bilgilerini al
-                const gameInfo = await contract.getGameInfo(i);
-                
-                // Eğer oyun yaratıcısı kullanıcı ise ve oyun durumu "Joined" ise
-                if (gameInfo.creator === userAddress && gameInfo.state === 1) {
-                    // Reveal hatırlatıcısı göster
-                    showRevealReminder(i);
-                    break; // İlk bulunan oyun için göster
-                }
-            } catch (error) {
-                console.error(`Oyun ${i} kontrol edilirken hata:`, error);
-            }
-        }
-    } catch (error) {
-        console.error("Reveal kontrolü hatası:", error);
-    }
+    // Reveal mekanizması kaldırıldı
+    return;
 }
 
 // Reveal hatırlatıcısı göster
 function showRevealReminder(gameId) {
-    // Eğer zaten bir hatırlatıcı varsa gösterme
-    if (document.querySelector('.reveal-reminder')) return;
-    
-    const reminder = document.createElement('div');
-    reminder.className = 'reveal-reminder';
-    reminder.innerHTML = `
-        <div class="reminder-content">
-            <h3>Reveal İşlemi Gerekiyor!</h3>
-            <p>Oyun #${gameId} için hamlenizi açıklamanız gerekiyor.</p>
-            <button class="btn primary" onclick="handleRevealMove(${gameId})">Şimdi Reveal Et</button>
-            <button class="btn outline" onclick="dismissReminder()">Daha Sonra</button>
-        </div>
-    `;
-    
-    document.body.appendChild(reminder);
-    
-    // Animasyon ile göster
-    setTimeout(() => {
-        reminder.classList.add('show');
-    }, 100);
-}
-
-// Hatırlatıcıyı kapat
-function dismissReminder() {
-    const reminder = document.querySelector('.reveal-reminder');
-    if (reminder) {
-        reminder.classList.remove('show');
-        setTimeout(() => {
-            reminder.remove();
-        }, 300);
-    }
-}
-
-// Oyuna katılma popup'ını aç
-function openJoinGameModal(gameId, stake) {
-    // Oyun ID'sini ve bahis miktarını sakla
-    selectedGameId = gameId;
-    selectedGameStake = stake;
-    
-    // Modal'ı göster
-    document.getElementById('join-game-modal').style.display = 'block';
-    document.getElementById('modal-overlay').style.display = 'block';
-    
-    // Modal başlığını güncelle
-    document.querySelector('#join-game-modal .modal-header h3').textContent = `Oyun #${gameId}'e Katıl`;
-    
-    // Bahis bilgisini göster
-    document.querySelector('#join-game-modal .stake-info').textContent = `Bahis: ${stake} ETH`;
-    
-    // Seçimleri sıfırla
-    selectedJoinMove = null;
-    document.querySelectorAll('#join-game-modal .move-option').forEach(option => {
-        option.classList.remove('selected');
-    });
-    
-    // Katıl butonunu devre dışı bırak
-    document.getElementById('modal-join-game').disabled = true;
+    // Reveal mekanizması kaldırıldı
+    return;
 }
 
 // Oyun durumunu dinle ve otomatik reveal yap
@@ -1254,30 +1194,11 @@ async function setupGameEventListeners() {
         contract.on("GameJoined", async (gameId, challenger, stake, event) => {
             console.log("Oyuna katılım olayı:", { gameId, challenger, stake });
             
-            // Oyun bilgilerini kontrol et
-            const gameInfo = await contract.getGameInfo(gameId);
+            // Oyun listesini güncelle
+            await loadGames();
             
-            // Eğer oyun yaratıcısı kullanıcı ise otomatik reveal yap
-            if (gameInfo.creator === userAddress && gameInfo.state === 1) {
-                console.log(`Oyun #${gameId} için otomatik reveal başlatılıyor...`);
-                
-                try {
-                    // Kullanıcıya bildirim göster
-                    showNotification(`Oyun #${gameId} için otomatik reveal işlemi başlatılıyor...`);
-                    
-                    // Reveal işlemini gerçekleştir
-                    const receipt = await revealMove(gameId);
-                    
-                    // Başarılı bildirim göster
-                    showNotification(`Oyun #${gameId} için reveal işlemi başarıyla tamamlandı!`, "success");
-                    
-                    // Oyun listesini güncelle
-                    await loadGames();
-                } catch (error) {
-                    console.error("Otomatik reveal hatası:", error);
-                    showNotification(`Otomatik reveal başarısız: ${error.message}`, "error");
-                }
-            }
+            // Oyun sonuçlandı bildirimi göster
+            showNotification(`Oyun #${gameId} sonuçlandı! Sonucu görmek için oyun listesini kontrol edin.`, "success");
         });
         
         console.log("Oyun olayları dinleniyor...");
