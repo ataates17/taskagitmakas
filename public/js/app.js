@@ -1184,8 +1184,10 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 // Loading mesajı göster
                 const resultDiv = document.getElementById('modal-result');
-                resultDiv.innerHTML = "Oyun oluşturuluyor...";
-                resultDiv.className = "modal-result pending";
+                if (resultDiv) {
+                    resultDiv.innerHTML = "Oyun oluşturuluyor...";
+                    resultDiv.className = "modal-result pending";
+                }
                 
                 // Modal'ı kapat
                 closeCreateGameModal();
@@ -1195,8 +1197,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Başarı mesajı göster
                 const mainResultDiv = document.getElementById('create-result');
-                mainResultDiv.innerHTML = `Oyun başarıyla oluşturuldu! Transaction: ${receipt.transactionHash}`;
-                mainResultDiv.className = "result success";
+                if (mainResultDiv) {
+                    mainResultDiv.innerHTML = `Oyun başarıyla oluşturuldu! Transaction: ${receipt.transactionHash}`;
+                    mainResultDiv.className = "result success";
+                }
                 
                 // Oyun listesini güncelle
                 await loadGames();
@@ -1205,8 +1209,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error("Oyun oluşturma hatası:", error);
                 // Hata mesajı göster
                 const resultDiv = document.getElementById('create-result');
-                resultDiv.innerHTML = "Hata: " + error.message;
-                resultDiv.className = "result error";
+                if (resultDiv) {
+                    resultDiv.innerHTML = "Hata: " + error.message;
+                    resultDiv.className = "result error";
+                }
             }
         }
     });
