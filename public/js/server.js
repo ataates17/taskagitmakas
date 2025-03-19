@@ -64,7 +64,7 @@ app.post('/api/auth', async (req, res) => {
 
 // Blockchain olaylarını dinle ve Firebase'i güncelle
 const listenToBlockchainEvents = () => {
-    const provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/YOUR_INFURA_KEY');
+    const provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/3d2f9b78be8f40a8a31dbcb08d2f7865');
     const contract = new ethers.Contract(contractAddress, contractABI, provider);
     
     // GameCreated olayını dinle
