@@ -92,22 +92,22 @@ function setupModalEventListeners() {
             // Hamleyi bir string olarak al
             const moveString = move == "1" ? "Rock" : move == "2" ? "Paper" : "Scissors";
             
-            // Stake miktarını al (örnek olarak sabit)
-            const stake = "0.01";
-            
             // Secret oluştur
             const secret = "mySecret";
             
             // moveAndSecret string'ini oluştur
             const moveAndSecret = `${moveString}:${secret}`;
             
-            // Commit hash'i oluştur
+            // Commit hash'i oluştur - solidity ile uyumlu olacak şekilde güncellendi
             const commit = ethers.utils.keccak256(
-                ethers.utils.defaultAbiCoder.encode(
+                ethers.utils.solidityPack(
                     ["string", "string"], 
                     [moveString, secret]
                 )
             );
+            
+            console.log("Oluşturulan commit hash:", commit);
+            console.log("moveString:", moveString, "secret:", secret);
             
             // Transaction'ı gönder
             document.getElementById('create-result').innerHTML = `
