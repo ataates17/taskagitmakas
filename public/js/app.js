@@ -614,31 +614,129 @@ async function loadGames() {
 
 // Blockchain olaylarını dinle
 function listenToBlockchainEvents() {
-    if (!contract) return;
-    
-    // GameCreated olayını dinle
-    contract.on('GameCreated', async (gameId, creator, stake, event) => {
-        console.log('Yeni oyun oluşturuldu:', gameId.toString());
+    try {
+        if (!contract) {
+            console.error("Kontrat bulunamadı");
+            return;
+        }
+        
+        console.log("Blockchain olayları dinleniyor...");
+        
+        // GameCreated olayını dinle
+        contract.on("GameCreated", (gameId, creator, stake, event) => {
+            console.log("GameCreated olayı:", { gameId: gameId.toString(), creator, stake: stake.toString() });
+            
+            // Firebase'de ilgili oyunu bul ve güncelle
+            updateFirebaseGameFromEvent("GameCreated", gameId.toString(), creator, null, null);
+        });
+        
+        // GameJoined olayını dinle
+        contract.on("GameJoined", (gameId, challenger, move, event) => {
+            console.log("GameJoined olayı:", { gameId: gameId.toString(), challenger, move: move.toString() });
+            
+            // Firebase'de ilgili oyunu bul ve güncelle
+            updateFirebaseGameFromEvent("GameJoined", gameId.toString(), null, challenger, move);
+        });
+        
+        // GameRevealed olayını dinle
+        contract.on("GameRevealed", (gameId, creator, challenger, creatorMove, challengerMove, winner, event) => {
+            console.log("GameRevealed olayı:", { 
+                gameId: gameId.toString(), 
+                creator, 
+                challenger, 
+                creatorMove: creatorMove.toString(), 
+                challengerMove: challengerMove.toString(),
+                winner
+            });
+            
+            // Firebase'de ilgili oyunu bul ve güncelle
+            updateFirebaseGameFromEvent("GameRevealed", gameId.toString(), creator, challenger, null, creatorMove, challengerMove, winner);
+        });
+    } catch (error) {
+        console.error("Blockchain olaylarını dinleme hatası:", error);
+    }
+}
+
+// Firebase'deki oyunu blockchain olayından güncelle
+async function updateFirebaseGameFromEvent(eventName, gameId, creator, challenger, challengerMove, creatorMove, challengerMoveRevealed, winner) {
+    try {
+        // Blockchain game ID'sine göre Firebase'de oyunu bul
+        const gamesSnapshot = await db.collection('games')
+            .where('blockchain.gameId', '==', gameId)
+            .limit(1)
+            .get();
+        
+        if (gamesSnapshot.empty) {
+            console.log(`Blockchain game ID ${gameId} için Firebase'de oyun bulunamadı`);
+            return;
+        }
+        
+        const gameDoc = gamesSnapshot.docs[0];
+        const firebaseGameId = gameDoc.id;
+        const gameData = gameDoc.data();
+        
+        console.log(`Firebase'de oyun bulundu: ${firebaseGameId}`);
+        
+        let updateData = {};
+        
+        if (eventName === "GameCreated") {
+            updateData = {
+                'blockchain.confirmed': true,
+                'blockchain.pending': false,
+                'state': 'ACTIVE'
+            };
+        } else if (eventName === "GameJoined") {
+            updateData = {
+                'challengerAddress': challenger.toLowerCase(),
+                'challengerMove': parseInt(challengerMove),
+                'state': 'JOINED',
+                'blockchain.joining': false,
+                'joinedAt': firebase.firestore.FieldValue.serverTimestamp()
+            };
+            
+            // Kullanıcı istatistiklerini güncelle
+            await updateUserStats(challenger, 'gamesJoined', 1);
+        } else if (eventName === "GameRevealed") {
+            const isDraw = winner === ethers.constants.AddressZero;
+            
+            updateData = {
+                'state': 'FINISHED',
+                'blockchain.revealing': false,
+                'finishedAt': firebase.firestore.FieldValue.serverTimestamp()
+            };
+            
+            if (isDraw) {
+                updateData.winnerAddress = null;
+                updateData.result = 'DRAW';
+            } else {
+                updateData.winnerAddress = winner.toLowerCase();
+                updateData.result = winner.toLowerCase() === creator.toLowerCase() ? 'CREATOR_WON' : 'CHALLENGER_WON';
+            }
+            
+            // Kullanıcı istatistiklerini güncelle
+            if (isDraw) {
+                await updateUserStats(creator, 'gamesTied', 1);
+                await updateUserStats(challenger, 'gamesTied', 1);
+            } else if (winner.toLowerCase() === creator.toLowerCase()) {
+                await updateUserStats(creator, 'gamesWon', 1);
+                await updateUserStats(challenger, 'gamesLost', 1);
+            } else {
+                await updateUserStats(creator, 'gamesLost', 1);
+                await updateUserStats(challenger, 'gamesWon', 1);
+            }
+        }
+        
+        // Firebase'i güncelle
+        await db.collection('games').doc(firebaseGameId).update(updateData);
+        console.log(`Firebase oyun ${firebaseGameId} güncellendi`);
         
         // Oyunları yenile
-        loadFirebaseGames();
-    });
-    
-    // GameJoined olayını dinle
-    contract.on('GameJoined', async (gameId, challenger, stake, event) => {
-        console.log('Oyuna katılım:', gameId.toString());
-        
-        // Oyunları yenile
-        loadFirebaseGames();
-    });
-    
-    // GameRevealed olayını dinle
-    contract.on('GameRevealed', async (gameId, creatorMove, challengerMove, winner, event) => {
-        console.log('Oyun sonuçlandı:', gameId.toString());
-        
-        // Oyunları yenile
-        loadFirebaseGames();
-    });
+        if (userAddress) {
+            loadGames();
+        }
+    } catch (error) {
+        console.error("Firebase oyun güncelleme hatası:", error);
+    }
 }
 
 // Oyun durumunu kontrol et ve gerekirse reveal hatırlatıcısı göster
@@ -935,136 +1033,39 @@ async function getGameIdFromReceipt(receipt) {
     }
 }
 
-// Firebase'de oyuna katıl
-async function joinFirebaseGame(gameId, move) {
+// Oyuna katıl butonuna tıklandığında
+async function handleJoinGame() {
     try {
-        if (!firebaseUser) {
-            // Kullanıcı giriş yapmamış, cüzdan adresi ile giriş yap
-            const success = await signInWithWalletAddress();
-            if (!success) {
-                throw new Error("Kullanıcı oluşturulamadı. Lütfen cüzdanınızı kontrol edin.");
-            }
+        if (!userAddress || !signer) {
+            const connected = await connectWallet();
+            if (!connected) return;
+        }
+        
+        const gameId = document.getElementById('game-id').value.trim();
+        if (!gameId) {
+            showResult('join-result', "Lütfen bir oyun ID'si girin", false);
+            return;
         }
         
         // Oyun bilgilerini al
         const gameDoc = await db.collection('games').doc(gameId).get();
         if (!gameDoc.exists) {
-            throw new Error("Oyun bulunamadı");
+            showResult('join-result', "Oyun bulunamadı", false);
+            return;
         }
         
         const gameData = gameDoc.data();
-        
-        // Oyun durumunu kontrol et
         if (gameData.state !== 'ACTIVE') {
-            throw new Error("Bu oyuna katılınamaz");
+            showResult('join-result', "Bu oyuna katılamazsınız. Oyun aktif değil.", false);
+            return;
         }
         
-        if (gameData.creator === firebaseUser.uid) {
-            throw new Error("Kendi oyununuza katılamazsınız");
-        }
-        
-        // Firebase'de oyunu güncelle
-        await db.collection('games').doc(gameId).update({
-            challenger: firebaseUser.uid,
-            challengerAddress: userAddress,
-            challengerMove: move,
-            state: 'JOINED',
-            joinedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        // Arka planda blockchain işlemini başlat
-        joinBlockchainGame(gameId, gameData.blockchain.gameId, move, gameData.stake);
-        
-        return true;
+        // Oyuna katılma modalını aç
+        const stake = weiToEth(gameData.stake);
+        openJoinGameModal(gameId, stake);
     } catch (error) {
         console.error("Oyuna katılma hatası:", error);
-        throw error;
-    }
-}
-
-// Blockchain'de oyuna katıl (arka planda)
-async function joinBlockchainGame(firebaseGameId, blockchainGameId, move, stake) {
-    try {
-        // Blockchain'e oyuna katıl
-        const stakeWei = ethers.utils.parseEther(stake.toString());
-        const tx = await contract.joinGame(
-            ethers.BigNumber.from(blockchainGameId), 
-            ethers.BigNumber.from(move), 
-            {
-                value: stakeWei,
-                gasLimit: 500000
-            }
-        );
-        
-        console.log("Blockchain join transaction gönderildi:", tx.hash);
-        
-        // Firebase'i güncelle
-        await db.collection('games').doc(firebaseGameId).update({
-            'blockchain.joinTxHash': tx.hash,
-            'blockchain.joinPending': true
-        });
-        
-        // Transaction'ı bekle
-        const receipt = await tx.wait();
-        
-        // Başarılı ise Firebase'i güncelle
-        if (receipt.status === 1) {
-            // Oyun sonucunu blockchain'den al
-            const result = await getGameResultFromBlockchain(blockchainGameId);
-            
-            await db.collection('games').doc(firebaseGameId).update({
-                'blockchain.joinConfirmed': true,
-                'blockchain.joinPending': false,
-                'state': 'FINISHED',
-                'result': result.winner,
-                'finishedAt': firebase.firestore.FieldValue.serverTimestamp()
-            });
-            
-            // Kullanıcı istatistiklerini güncelle
-            await updateUserStats(gameData, result);
-            
-            // Oyun listesini güncelle
-            loadFirebaseGames();
-        } else {
-            // Başarısız ise hata durumunu güncelle
-            await db.collection('games').doc(firebaseGameId).update({
-                'blockchain.joinConfirmed': false,
-                'blockchain.joinPending': false,
-                'blockchain.joinError': 'Transaction failed',
-                'state': 'ERROR'
-            });
-        }
-        
-        return receipt;
-    } catch (error) {
-        console.error("Blockchain oyuna katılma hatası:", error);
-        
-        // Hata durumunu Firebase'e kaydet
-        await db.collection('games').doc(firebaseGameId).update({
-            'blockchain.joinConfirmed': false,
-            'blockchain.joinPending': false,
-            'blockchain.joinError': error.message,
-            'state': 'ERROR'
-        });
-        
-        throw error;
-    }
-}
-
-// Blockchain'den oyun sonucunu al
-async function getGameResultFromBlockchain(gameId) {
-    try {
-        const gameResult = await contract.getGameResult(gameId);
-        
-        // Sonucu dönüştür
-        return {
-            winner: gameResult.winner,
-            creatorMove: gameResult.creatorMove,
-            challengerMove: gameResult.challengerMove
-        };
-    } catch (error) {
-        console.error("Oyun sonucu alma hatası:", error);
-        return { winner: 'unknown', creatorMove: 0, challengerMove: 0 };
+        showResult('join-result', "Oyuna katılma hatası: " + error.message, false);
     }
 }
 
@@ -1466,4 +1467,128 @@ function checkGamesList() {
     // Element pozisyonu
     const rect = gamesList.getBoundingClientRect();
     console.log("games-list position:", rect);
+}
+
+// Hamleyi açıkla
+async function revealMove(gameId) {
+    try {
+        if (!userAddress || !signer) {
+            const connected = await connectWallet();
+            if (!connected) {
+                throw new Error("Cüzdan bağlantısı gerekli");
+            }
+        }
+        
+        console.log(`Hamle açıklanıyor... Game ID: ${gameId}`);
+        
+        // Firebase'den oyun bilgilerini al
+        const gameDoc = await db.collection('games').doc(gameId).get();
+        if (!gameDoc.exists) {
+            throw new Error("Oyun bulunamadı");
+        }
+        
+        const gameData = gameDoc.data();
+        if (gameData.state !== 'JOINED') {
+            throw new Error("Bu oyun için hamle açıklanamaz. Oyun durumu uygun değil.");
+        }
+        
+        if (gameData.creatorAddress.toLowerCase() !== userAddress.toLowerCase()) {
+            throw new Error("Sadece oyun sahibi hamleyi açıklayabilir");
+        }
+        
+        // Blockchain'de hamleyi açıkla
+        await revealBlockchainMove(gameId, gameData.blockchain.gameId, gameData.move, gameData.salt);
+        
+        return true;
+    } catch (error) {
+        console.error("Hamle açıklama hatası:", error);
+        throw error;
+    }
+}
+
+// Blockchain'de hamleyi açıkla
+async function revealBlockchainMove(firebaseGameId, blockchainGameId, move, salt) {
+    try {
+        if (!userAddress || !signer) {
+            throw new Error("Cüzdan bağlantısı bulunamadı");
+        }
+        
+        // Kontratı signer ile bağla
+        const gameContract = new ethers.Contract(contractAddress, contractABI, signer);
+        
+        console.log("Blockchain'de hamle açıklanıyor...");
+        console.log("Blockchain Game ID:", blockchainGameId);
+        console.log("Hamle:", move);
+        console.log("Salt:", salt);
+        
+        // Kontrat fonksiyonunu çağır
+        const tx = await gameContract.revealMove(blockchainGameId, move, salt, {
+            gasLimit: 500000
+        });
+        
+        console.log("Transaction gönderildi:", tx.hash);
+        
+        // Firebase'i güncelle
+        await db.collection('games').doc(firebaseGameId).update({
+            'blockchain.revealTxHash': tx.hash,
+            'blockchain.revealing': true
+        });
+        
+        // Transaction'ı bekle
+        const receipt = await tx.wait();
+        console.log("Transaction onaylandı:", receipt);
+        
+        // GameRevealed olayını bul
+        const event = receipt.events.find(e => e.event === 'GameRevealed');
+        if (event) {
+            const winner = event.args.winner;
+            const isDraw = winner === ethers.constants.AddressZero;
+            
+            // Firebase'i güncelle
+            const updateData = {
+                'state': 'FINISHED',
+                'blockchain.revealing': false,
+                'finishedAt': firebase.firestore.FieldValue.serverTimestamp()
+            };
+            
+            if (isDraw) {
+                updateData.winnerAddress = null;
+                updateData.result = 'DRAW';
+            } else {
+                updateData.winnerAddress = winner.toLowerCase();
+                updateData.result = winner.toLowerCase() === gameData.creatorAddress.toLowerCase() ? 'CREATOR_WON' : 'CHALLENGER_WON';
+            }
+            
+            await db.collection('games').doc(firebaseGameId).update(updateData);
+            
+            console.log("Hamle başarıyla açıklandı!");
+            console.log("Sonuç:", isDraw ? "Berabere" : `Kazanan: ${winner}`);
+            
+            // Kullanıcı istatistiklerini güncelle
+            if (isDraw) {
+                await updateUserStats(gameData.creatorAddress, 'gamesTied', 1);
+                await updateUserStats(gameData.challengerAddress, 'gamesTied', 1);
+            } else if (winner.toLowerCase() === gameData.creatorAddress.toLowerCase()) {
+                await updateUserStats(gameData.creatorAddress, 'gamesWon', 1);
+                await updateUserStats(gameData.challengerAddress, 'gamesLost', 1);
+            } else {
+                await updateUserStats(gameData.creatorAddress, 'gamesLost', 1);
+                await updateUserStats(gameData.challengerAddress, 'gamesWon', 1);
+            }
+        }
+        
+        return receipt;
+    } catch (error) {
+        console.error("Blockchain hamle açıklama hatası:", error);
+        
+        // Firebase'i güncelle
+        if (firebaseGameId) {
+            await db.collection('games').doc(firebaseGameId).update({
+                'blockchain.revealing': false,
+                'blockchain.revealError': error.message
+            });
+        }
+        
+        throw error;
+    }
 } 
