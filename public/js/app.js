@@ -60,6 +60,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Cüzdan adresi ile kullanıcı oluştur veya giriş yap
                 await signInWithWalletAddress();
                 
+                // Kullanıcı bilgilerini yükle
+                await loadUserInfo();
+                
                 // Oyunları yükle
                 loadGames();
             }
@@ -87,6 +90,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.ethereum.on('accountsChanged', async (accounts) => {
             console.log('Hesap değişti:', accounts);
             if (accounts.length > 0) {
+                // Provider'ı yeniden başlat
+                provider = new ethers.providers.Web3Provider(window.ethereum);
                 await connectWallet();
             } else {
                 // Kullanıcı bağlantıyı kesti
@@ -151,6 +156,9 @@ async function connectWallet() {
     try {
         // Modern request method (EIP-1193)
         if (window.ethereum) {
+            // Provider'ın hazır olduğundan emin ol
+            ensureProvider();
+            
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
             if (accounts.length === 0) {
                 throw new Error("Kullanıcı cüzdan erişimine izin vermedi");
@@ -1291,4 +1299,18 @@ async function getFirebaseGames() {
         console.error("Oyun listesi hatası:", error);
         return [];
     }
+}
+
+// Provider'ın hazır olup olmadığını kontrol et
+function ensureProvider() {
+    if (!provider && window.ethereum) {
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        console.log("Provider yeniden başlatıldı");
+    }
+    
+    if (!provider) {
+        throw new Error("Ethereum provider bulunamadı. Lütfen MetaMask yükleyin.");
+    }
+    
+    return provider;
 } 
