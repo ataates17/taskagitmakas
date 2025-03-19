@@ -159,6 +159,13 @@ async function handleJoinGame() {
             return;
         }
 
+        // Oyun bilgilerini al
+        const game = await contract.games(gameId);
+        if (game.creator.toLowerCase() === userAddress.toLowerCase()) {
+            alert("Kendi oyununuza katılamazsınız!");
+            return;
+        }
+
         resultDiv.innerHTML = `
             <div class="loading">
                 <p>Transaction hazırlanıyor...</p>
@@ -167,20 +174,8 @@ async function handleJoinGame() {
         `;
         resultDiv.className = "result pending";
 
-        // Oyun durumunu kontrol et
-        const gameState = await contract.getGameState(gameId);
-        if (gameState.state !== 0) { // 0: Created
-            throw new Error("Bu oyun artık geçerli değil");
-        }
-
         // İşlemi gönder
-        const tx = await contract.joinGame(gameId, move, {
-            value: ethers.utils.parseEther("0.001"), // Örnek stake değeri
-            gasLimit: 300000
-        });
-
-        // İşlemi bekle
-        const receipt = await tx.wait();
+        const receipt = await joinGameTransaction(gameId, move);
         console.log("Transaction onaylandı:", receipt);
 
         resultDiv.innerHTML = `
@@ -210,16 +205,11 @@ async function handleJoinGame() {
         }, 3000);
 
     } catch (error) {
+        console.error("Hata:", error);
+        resultDiv.innerHTML = `<div class="error">Hata: ${error.message}</div>`;
+        resultDiv.className = "result error";
         joinButton.disabled = false;
         joinButton.textContent = 'Oyuna Katıl';
-        
-        resultDiv.innerHTML = `
-            <div class="error">
-                <p>Hata: ${error.message}</p>
-                <p>Lütfen MetaMask ayarlarınızı kontrol edin ve tekrar deneyin.</p>
-            </div>
-        `;
-        resultDiv.className = "result error";
     }
 }
 
@@ -1088,15 +1078,21 @@ document.getElementById('join-game').addEventListener('click', async () => {
 
 async function joinGameTransaction(gameId, move) {
     try {
-        // Oyun durumunu kontrol et
+        // Oyun bilgilerini al
         const game = await contract.games(gameId);
         if (game.finished) {
             throw new Error("Bu oyun zaten tamamlandı");
         }
 
+        // Stake miktarını kontrol et
+        const stake = game.stake;
+        if (!stake) {
+            throw new Error("Geçersiz bahis miktarı");
+        }
+
         // İşlemi gönder
         const tx = await contract.joinGame(gameId, move, {
-            value: ethers.utils.parseEther("0.01"), // Örnek stake değeri
+            value: stake, // Doğru stake miktarını gönder
             gasLimit: 300000
         });
 
