@@ -1,5 +1,5 @@
 // Kontrat adresi
-const contractAddress = "0xa227897756506FD5b05C78665A29fC77a97C516B"; // Buraya kontratınızın adresini yazın
+const contractAddress = "0xDBF78Bce7BE689db4bd60e84D9350B83338d2B02"; // Buraya kontratınızın adresini yazın
 
 // Kontrat ABI
 const contractABI = [
@@ -7,13 +7,26 @@ const contractABI = [
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "GameCancelled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
         "internalType": "uint256",
         "name": "gameId",
         "type": "uint256"
       },
       {
-        "indexed": true,
+        "indexed": false,
         "internalType": "address",
         "name": "creator",
         "type": "address"
@@ -32,22 +45,47 @@ const contractABI = [
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
+        "indexed": false,
         "internalType": "uint256",
         "name": "gameId",
         "type": "uint256"
       },
       {
-        "indexed": true,
+        "indexed": false,
+        "internalType": "address",
+        "name": "winner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "prize",
+        "type": "uint256"
+      }
+    ],
+    "name": "GameFinished",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
         "internalType": "address",
         "name": "challenger",
         "type": "address"
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "stake",
-        "type": "uint256"
+        "internalType": "enum RockPaperScissorsV2.Move",
+        "name": "move",
+        "type": "uint8"
       }
     ],
     "name": "GameJoined",
@@ -57,39 +95,131 @@ const contractABI = [
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
+        "indexed": false,
         "internalType": "uint256",
         "name": "gameId",
         "type": "uint256"
       },
       {
         "indexed": false,
-        "internalType": "enum RockPaperScissors.Move",
-        "name": "creatorMove",
-        "type": "uint8"
-      },
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "PlatformFeeCollected",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "GAME_CREATION_COOLDOWN",
+    "outputs": [
       {
-        "indexed": false,
-        "internalType": "enum RockPaperScissors.Move",
-        "name": "challengerMove",
-        "type": "uint8"
-      },
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_GAMES_PER_USER",
+    "outputs": [
       {
-        "indexed": false,
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_PLATFORM_FEE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_STAKE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "PLATFORM_FEE_PERCENT",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "PLATFORM_WALLET",
+    "outputs": [
+      {
         "internalType": "address",
-        "name": "winner",
+        "name": "",
         "type": "address"
       }
     ],
-    "name": "GameRevealed",
-    "type": "event"
+    "stateMutability": "view",
+    "type": "function"
   },
   {
     "inputs": [
       {
-        "internalType": "bytes32",
-        "name": "commitHash",
-        "type": "bytes32"
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "cancelGame",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "claimTimeoutAsChallenger",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "enum RockPaperScissorsV2.Move",
+        "name": "move",
+        "type": "uint8"
       }
     ],
     "name": "createGame",
@@ -101,6 +231,19 @@ const contractABI = [
       }
     ],
     "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "emergencyWithdraw",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -137,34 +280,68 @@ const contractABI = [
         "type": "address"
       },
       {
+        "internalType": "bytes32",
+        "name": "creatorCommitment",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "enum RockPaperScissorsV2.Move",
+        "name": "challengerMove",
+        "type": "uint8"
+      },
+      {
+        "internalType": "enum RockPaperScissorsV2.Move",
+        "name": "creatorMove",
+        "type": "uint8"
+      },
+      {
         "internalType": "uint256",
         "name": "stake",
         "type": "uint256"
       },
       {
-        "internalType": "bytes32",
-        "name": "commitHash",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "enum RockPaperScissors.Move",
-        "name": "creatorMove",
-        "type": "uint8"
-      },
-      {
-        "internalType": "enum RockPaperScissors.Move",
-        "name": "challengerMove",
-        "type": "uint8"
-      },
-      {
-        "internalType": "enum RockPaperScissors.GameState",
+        "internalType": "enum RockPaperScissorsV2.GameState",
         "name": "state",
         "type": "uint8"
+      },
+      {
+        "internalType": "uint256",
+        "name": "creationTime",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "joinTime",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "salt",
+        "type": "bytes32"
       },
       {
         "internalType": "address",
         "name": "winner",
         "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      }
+    ],
+    "name": "getActiveGames",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -196,7 +373,7 @@ const contractABI = [
         "type": "uint256"
       },
       {
-        "internalType": "enum RockPaperScissors.GameState",
+        "internalType": "enum RockPaperScissorsV2.GameState",
         "name": "state",
         "type": "uint8"
       },
@@ -217,133 +394,21 @@ const contractABI = [
         "type": "uint256"
       }
     ],
-    "name": "getGameResult",
+    "name": "getGameState",
     "outputs": [
       {
-        "internalType": "address",
-        "name": "winner",
-        "type": "address"
-      },
-      {
-        "internalType": "enum RockPaperScissors.Move",
-        "name": "creatorMove",
+        "internalType": "enum RockPaperScissorsV2.GameState",
+        "name": "state",
         "type": "uint8"
       },
       {
-        "internalType": "enum RockPaperScissors.Move",
-        "name": "challengerMove",
-        "type": "uint8"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "gameId",
-        "type": "uint256"
+        "internalType": "bool",
+        "name": "hasChallenger",
+        "type": "bool"
       },
       {
-        "internalType": "enum RockPaperScissors.Move",
-        "name": "move",
-        "type": "uint8"
-      }
-    ],
-    "name": "joinGame",
-    "outputs": [],
-    "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
         "internalType": "uint256",
-        "name": "gameId",
-        "type": "uint256"
-      },
-      {
-        "internalType": "enum RockPaperScissors.Move",
-        "name": "move",
-        "type": "uint8"
-      },
-      {
-        "internalType": "string",
-        "name": "salt",
-        "type": "string"
-      }
-    ],
-    "name": "revealMove",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "GAME_CREATION_INTERVAL",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "GAME_TIMEOUT_PERIOD",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "MAX_GAMES_PER_USER",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "MIN_STAKE",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "activeGamesCount",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
+        "name": "stake",
         "type": "uint256"
       }
     ],
@@ -358,33 +423,7 @@ const contractABI = [
         "type": "uint256"
       }
     ],
-    "name": "cancelGame",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "gameId",
-        "type": "uint256"
-      }
-    ],
-    "name": "claimTimeout",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "user",
-        "type": "address"
-      }
-    ],
-    "name": "getActiveGames",
+    "name": "getGameTimeout",
     "outputs": [
       {
         "internalType": "uint256",
@@ -419,14 +458,38 @@ const contractABI = [
     "name": "getPlatformStats",
     "outputs": [
       {
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      },
+      {
         "internalType": "uint256",
-        "name": "_totalGamesPlayed",
+        "name": "feePercent",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "_totalEthTraded",
+        "name": "totalFees",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "isGameFinished",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -454,6 +517,24 @@ const contractABI = [
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "enum RockPaperScissorsV2.Move",
+        "name": "move",
+        "type": "uint8"
+      }
+    ],
+    "name": "joinGame",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "",
         "type": "address"
@@ -471,8 +552,21 @@ const contractABI = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "revealMove",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
-    "name": "totalEthTraded",
+    "name": "timeoutPeriod",
     "outputs": [
       {
         "internalType": "uint256",
@@ -485,7 +579,45 @@ const contractABI = [
   },
   {
     "inputs": [],
-    "name": "totalGamesPlayed",
+    "name": "totalPlatformFees",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "userGameCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "userNonces",
     "outputs": [
       {
         "internalType": "uint256",
