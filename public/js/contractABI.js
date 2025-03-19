@@ -1,4 +1,4 @@
-// Yeni kontrat ABI'si
+// RockPaperScissorsV5 kontrat ABI'si
 const contractABI = [
   {
     "anonymous": false,
@@ -35,14 +35,39 @@ const contractABI = [
         "type": "uint256"
       },
       {
+        "indexed": true,
+        "internalType": "address",
+        "name": "challenger",
+        "type": "address"
+      },
+      {
         "indexed": false,
-        "internalType": "enum RockPaperScissorsV4.Move",
+        "internalType": "enum RockPaperScissorsV5.Move",
+        "name": "move",
+        "type": "uint8"
+      }
+    ],
+    "name": "GamePlayed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "enum RockPaperScissorsV5.Move",
         "name": "creatorMove",
         "type": "uint8"
       },
       {
         "indexed": false,
-        "internalType": "enum RockPaperScissorsV4.Move",
+        "internalType": "enum RockPaperScissorsV5.Move",
         "name": "challengerMove",
         "type": "uint8"
       },
@@ -53,8 +78,46 @@ const contractABI = [
         "type": "address"
       }
     ],
-    "name": "GameFinished",
+    "name": "GameResultRevealed",
     "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "player",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "RewardClaimed",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "claimReward",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   },
   {
     "inputs": [
@@ -113,12 +176,12 @@ const contractABI = [
         "type": "bytes32"
       },
       {
-        "internalType": "enum RockPaperScissorsV4.Move",
+        "internalType": "enum RockPaperScissorsV5.Move",
         "name": "creatorMove",
         "type": "uint8"
       },
       {
-        "internalType": "enum RockPaperScissorsV4.Move",
+        "internalType": "enum RockPaperScissorsV5.Move",
         "name": "challengerMove",
         "type": "uint8"
       },
@@ -128,7 +191,7 @@ const contractABI = [
         "type": "uint256"
       },
       {
-        "internalType": "enum RockPaperScissorsV4.GameState",
+        "internalType": "enum RockPaperScissorsV5.GameState",
         "name": "state",
         "type": "uint8"
       },
@@ -141,6 +204,16 @@ const contractABI = [
         "internalType": "string",
         "name": "moveAndSecret",
         "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "creatorBalance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "challengerBalance",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -154,7 +227,7 @@ const contractABI = [
         "type": "uint256"
       },
       {
-        "internalType": "enum RockPaperScissorsV4.Move",
+        "internalType": "enum RockPaperScissorsV5.Move",
         "name": "move",
         "type": "uint8"
       }
@@ -163,8 +236,21 @@ const contractABI = [
     "outputs": [],
     "stateMutability": "payable",
     "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "gameId",
+        "type": "uint256"
+      }
+    ],
+    "name": "revealResult",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   }
 ];
 
 // Sepolia testnet üzerindeki kontrat adresi
-const contractAddress = "0xB21FEcD272573Bc2cE67744f1a00258cb464E12e"; // Kontrat adresinizi buraya yazın
+const contractAddress = "0x71C95911E9a5D330f4D621842EC243EE1343292e"; // Yeni deploy edilen kontrat adresi

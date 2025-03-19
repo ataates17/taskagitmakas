@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract RockPaperScissorsV4 {
+contract RockPaperScissorsV5 {
     enum Move { None, Rock, Paper, Scissors }
-    enum GameState { Created, Finished }
+    enum GameState { Created, Played, Finished }
     
     struct Game {
         address creator;
@@ -14,14 +14,18 @@ contract RockPaperScissorsV4 {
         uint256 stake;
         GameState state;
         address winner;
-        string moveAndSecret; // İlk oyuncunun hamle ve secret'ı şifrelenmiş string olarak
+        string moveAndSecret;
+        uint256 creatorBalance;    // Yaratıcının çekebileceği bakiye
+        uint256 challengerBalance; // Oyuncunun çekebileceği bakiye
     }
     
     mapping(uint256 => Game) public games;
     uint256 public gameCount;
 
     event GameCreated(uint256 gameId, address indexed creator, uint256 stake);
-    event GameFinished(uint256 gameId, Move creatorMove, Move challengerMove, address winner);
+    event GamePlayed(uint256 gameId, address indexed challenger, Move move);
+    event GameResultRevealed(uint256 gameId, Move creatorMove, Move challengerMove, address winner);
+    event RewardClaimed(uint256 gameId, address player, uint256 amount);
     
     function createGame(bytes32 commit, string memory moveAndSecret) external payable {
         require(msg.value > 0, "Stake must be greater than 0");
@@ -36,7 +40,9 @@ contract RockPaperScissorsV4 {
             stake: msg.value,
             state: GameState.Created,
             winner: address(0),
-            moveAndSecret: moveAndSecret
+            moveAndSecret: moveAndSecret,
+            creatorBalance: 0,
+            challengerBalance: 0
         });
 
         emit GameCreated(gameId, msg.sender, msg.value);
@@ -51,6 +57,14 @@ contract RockPaperScissorsV4 {
 
         game.challenger = msg.sender;
         game.challengerMove = move;
+        game.state = GameState.Played;
+        
+        emit GamePlayed(gameId, msg.sender, move);
+    }
+    
+    function revealResult(uint256 gameId) external {
+        Game storage game = games[gameId];
+        require(game.state == GameState.Played, "Game must be in Played state");
         
         // İlk oyuncunun hamle ve secret'ını ayrıştır
         (Move creatorMove, string memory secret) = parseCreatorMoveAndSecret(game.moveAndSecret);
@@ -61,30 +75,51 @@ contract RockPaperScissorsV4 {
         game.creatorMove = creatorMove;
         
         // Determine the winner
-        address winner;
-        if (creatorMove == move) {
+        if (creatorMove == game.challengerMove) {
             // It's a tie
-            winner = address(0);
-            payable(game.creator).transfer(game.stake);
-            payable(game.challenger).transfer(game.stake);
+            game.winner = address(0);
+            game.creatorBalance = game.stake;
+            game.challengerBalance = game.stake;
         } else if (
-            (creatorMove == Move.Rock && move == Move.Scissors) ||
-            (creatorMove == Move.Paper && move == Move.Rock) ||
-            (creatorMove == Move.Scissors && move == Move.Paper)
+            (creatorMove == Move.Rock && game.challengerMove == Move.Scissors) ||
+            (creatorMove == Move.Paper && game.challengerMove == Move.Rock) ||
+            (creatorMove == Move.Scissors && game.challengerMove == Move.Paper)
         ) {
             // Creator wins
-            winner = game.creator;
-            payable(game.creator).transfer(2 * game.stake);
+            game.winner = game.creator;
+            game.creatorBalance = 2 * game.stake;
+            game.challengerBalance = 0;
         } else {
             // Challenger wins
-            winner = game.challenger;
-            payable(game.challenger).transfer(2 * game.stake);
+            game.winner = game.challenger;
+            game.creatorBalance = 0;
+            game.challengerBalance = 2 * game.stake;
         }
         
-        game.winner = winner;
         game.state = GameState.Finished;
         
-        emit GameFinished(gameId, creatorMove, move, winner);
+        emit GameResultRevealed(gameId, creatorMove, game.challengerMove, game.winner);
+    }
+    
+    // Kazancı çekme fonksiyonu
+    function claimReward(uint256 gameId) external {
+        Game storage game = games[gameId];
+        require(game.state == GameState.Finished, "Game must be finished");
+        
+        uint256 amount = 0;
+        
+        if (msg.sender == game.creator && game.creatorBalance > 0) {
+            amount = game.creatorBalance;
+            game.creatorBalance = 0;
+        } else if (msg.sender == game.challenger && game.challengerBalance > 0) {
+            amount = game.challengerBalance;
+            game.challengerBalance = 0;
+        }
+        
+        require(amount > 0, "No reward to claim");
+        
+        payable(msg.sender).transfer(amount);
+        emit RewardClaimed(gameId, msg.sender, amount);
     }
     
     // İlk oyuncunun hamle ve secret'ını ayrıştır

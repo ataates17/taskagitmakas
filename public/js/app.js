@@ -502,9 +502,13 @@ async function loadGames() {
                 const gameItem = document.createElement('div');
                 gameItem.className = 'game-item';
                 
-                // Oyun durumunu belirle - yeni kontrat yalnızca Created ve Finished durumlarına sahip
+                // Oyun durumunu belirle
                 let status;
-                if (game.state == 1) { // Finished
+                if (game.state == 0) { // Created
+                    status = "Açık (Katılım Bekliyor)";
+                } else if (game.state == 1) { // Played
+                    status = "Oynanmış (Sonuç Bekleniyor)";
+                } else if (game.state == 2) { // Finished
                     if (game.winner === ethers.constants.AddressZero) {
                         status = "Berabere";
                     } else if (game.winner === game.creator) {
@@ -512,8 +516,6 @@ async function loadGames() {
                     } else {
                         status = "Rakip Kazandı";
                     }
-                } else { // Created
-                    status = "Açık (Katılım Bekliyor)";
                 }
                 
                 // Kullanıcının oyunu mu?
@@ -530,8 +532,9 @@ async function loadGames() {
                         <div class="creator">Yaratıcı: ${shortenAddress(game.creator)}</div>
                         <div class="challenger">Rakip: ${game.challenger !== ethers.constants.AddressZero ? shortenAddress(game.challenger) : "Bekleniyor"}</div>
                         <div class="status">Durum: ${status}</div>
+                        ${game.state == 2 ? `<div class="balance">Bakiyen: ${ethers.utils.formatEther(game.creatorBalance.add(game.challengerBalance))} ETH</div>` : ''}
                     </div>
-                    <div class="game-actions"></div>
+                    <div id="game-${i}-actions" class="game-actions"></div>
                 `;
                 
                 // Oyun aksiyonlarını ekle
@@ -550,22 +553,46 @@ async function loadGames() {
                     gameActions.appendChild(joinButton);
                 }
                 
-                // Kullanıcıya ait oyun ise özel işlem butonları ekle
-                if (isUserGame) {
-                    if (game.state == 1) { // Finished
-                        const winnerText = document.createElement('div');
-                        winnerText.className = 'winner-text';
-                        if (game.winner === ethers.constants.AddressZero) {
-                            winnerText.textContent = 'Berabere!';
-                        } else if (game.winner.toLowerCase() === userAddress.toLowerCase()) {
-                            winnerText.textContent = 'Tebrikler! Kazandınız!';
-                            winnerText.className += ' win';
-                        } else {
-                            winnerText.textContent = 'Üzgünüz, kaybettiniz.';
-                            winnerText.className += ' lose';
-                        }
-                        gameActions.appendChild(winnerText);
+                // Oyun Played durumundaysa ve kullanıcı oyunun bir parçasıysa "Sonucu Göster" butonu ekle
+                if (game.state == 1 && isUserGame) {
+                    const revealButton = document.createElement('button');
+                    revealButton.className = 'btn primary small';
+                    revealButton.textContent = 'Sonucu Göster';
+                    revealButton.addEventListener('click', () => handleRevealResult(i));
+                    gameActions.appendChild(revealButton);
+                }
+                
+                // Oyun Finished durumundaysa ve kullanıcının çekebileceği bakiye varsa "Ödülü Çek" butonu ekle
+                if (game.state == 2 && isUserGame) {
+                    let userBalance = ethers.BigNumber.from(0);
+                    
+                    if (game.creator.toLowerCase() === userAddress.toLowerCase()) {
+                        userBalance = game.creatorBalance;
+                    } else if (game.challenger.toLowerCase() === userAddress.toLowerCase()) {
+                        userBalance = game.challengerBalance;
                     }
+                    
+                    if (userBalance.gt(0)) {
+                        const claimButton = document.createElement('button');
+                        claimButton.className = 'btn primary small';
+                        claimButton.textContent = 'Ödülü Çek';
+                        claimButton.addEventListener('click', () => handleClaimReward(i));
+                        gameActions.appendChild(claimButton);
+                    }
+                    
+                    // Kazanan bilgisi
+                    const winnerText = document.createElement('div');
+                    winnerText.className = 'winner-text';
+                    if (game.winner === ethers.constants.AddressZero) {
+                        winnerText.textContent = 'Berabere!';
+                    } else if (game.winner.toLowerCase() === userAddress.toLowerCase()) {
+                        winnerText.textContent = 'Tebrikler! Kazandınız!';
+                        winnerText.className += ' win';
+                    } else {
+                        winnerText.textContent = 'Üzgünüz, kaybettiniz.';
+                        winnerText.className += ' lose';
+                    }
+                    gameActions.appendChild(winnerText);
                 }
                 
                 gameItems.push(gameItem);
@@ -676,4 +703,129 @@ async function joinGameTransaction(gameId, move) {
 // Yardımcı fonksiyonlar
 function shortenAddress(address) {
     return address.substring(0, 6) + '...' + address.substring(address.length - 4);
+}
+
+// Oyun sonucunu gösterme transaction'ı
+async function revealResultTransaction(gameId) {
+    try {
+        console.log(`Oyun ${gameId} sonucu gösteriliyor`);
+        
+        const tx = await contract.revealResult(gameId, {
+            gasLimit: 300000
+        });
+        
+        console.log("Transaction gönderildi:", tx.hash);
+        
+        const receipt = await tx.wait();
+        console.log("Transaction onaylandı:", receipt);
+        
+        if (receipt.status === 0) {
+            throw new Error("Transaction başarısız oldu");
+        }
+        
+        return receipt;
+        
+    } catch (error) {
+        console.error("Sonuç gösterme hatası:", error);
+        
+        let errorMessage = "Sonuç gösterilirken bir hata oluştu: ";
+        
+        if (error.error && error.error.message) {
+            errorMessage += error.error.message;
+        } else if (error.data) {
+            errorMessage += "Kontrat hatası";
+        } else {
+            errorMessage += error.message;
+        }
+        
+        throw new Error(errorMessage);
+    }
+}
+
+// Ödül çekme transaction'ı
+async function claimRewardTransaction(gameId) {
+    try {
+        console.log(`Oyun ${gameId} ödülü çekiliyor`);
+        
+        const tx = await contract.claimReward(gameId, {
+            gasLimit: 300000
+        });
+        
+        console.log("Transaction gönderildi:", tx.hash);
+        
+        const receipt = await tx.wait();
+        console.log("Transaction onaylandı:", receipt);
+        
+        if (receipt.status === 0) {
+            throw new Error("Transaction başarısız oldu");
+        }
+        
+        return receipt;
+        
+    } catch (error) {
+        console.error("Ödül çekme hatası:", error);
+        
+        let errorMessage = "Ödül çekilirken bir hata oluştu: ";
+        
+        if (error.error && error.error.message) {
+            errorMessage += error.error.message;
+        } else if (error.data) {
+            errorMessage += "Kontrat hatası";
+        } else {
+            errorMessage += error.message;
+        }
+        
+        throw new Error(errorMessage);
+    }
+}
+
+// Düğme event handler'ları için yardımcı fonksiyonlar
+async function handleRevealResult(gameId) {
+    try {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'loading';
+        loadingDiv.innerHTML = `
+            <p>Sonuç gösteriliyor...</p>
+            <div class="spinner"></div>
+        `;
+        document.getElementById(`game-${gameId}-actions`).appendChild(loadingDiv);
+        
+        const receipt = await revealResultTransaction(gameId);
+        
+        loadingDiv.remove();
+        
+        alert("Sonuç başarıyla gösterildi!");
+        
+        // Oyunları yenile
+        await loadGames();
+        
+    } catch (error) {
+        console.error("Sonuç gösterme hatası:", error);
+        alert("Hata: " + error.message);
+    }
+}
+
+async function handleClaimReward(gameId) {
+    try {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'loading';
+        loadingDiv.innerHTML = `
+            <p>Ödül çekiliyor...</p>
+            <div class="spinner"></div>
+        `;
+        document.getElementById(`game-${gameId}-actions`).appendChild(loadingDiv);
+        
+        const receipt = await claimRewardTransaction(gameId);
+        
+        loadingDiv.remove();
+        
+        alert("Ödül başarıyla çekildi!");
+        
+        // Oyunları yenile
+        await loadGames();
+        
+    } catch (error) {
+        console.error("Ödül çekme hatası:", error);
+        alert("Hata: " + error.message);
+    }
 } 
