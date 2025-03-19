@@ -1084,4 +1084,35 @@ document.getElementById('join-game').addEventListener('click', async () => {
         // İşlem tamamlandıktan sonra butonu tekrar etkinleştir
         joinButton.disabled = false;
     }
-}); 
+});
+
+async function joinGameTransaction(gameId, move) {
+    try {
+        // Oyun durumunu kontrol et
+        const game = await contract.games(gameId);
+        if (game.finished) {
+            throw new Error("Bu oyun zaten tamamlandı");
+        }
+
+        // İşlemi gönder
+        const tx = await contract.joinGame(gameId, move, {
+            value: ethers.utils.parseEther("0.01"), // Örnek stake değeri
+            gasLimit: 300000
+        });
+
+        console.log("Transaction gönderildi:", tx.hash);
+
+        const receipt = await tx.wait();
+        console.log("Transaction onaylandı:", receipt);
+
+        if (receipt.status === 0) {
+            throw new Error("Transaction başarısız oldu");
+        }
+
+        return receipt;
+
+    } catch (error) {
+        console.error("Join Transaction detaylı hata:", error);
+        throw new Error("Oyuna katılırken bir hata oluştu");
+    }
+} 
