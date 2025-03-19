@@ -290,14 +290,17 @@ async function loadGames() {
         console.log("Oyun bilgileri:", game);
 
         // Oyun bilgilerini kullanarak arayüzü güncelleyin
-        // Örneğin:
         const gameInfoDiv = document.getElementById('game-info');
-        gameInfoDiv.innerHTML = `
-            <p>Oyun ID: ${gameId}</p>
-            <p>Yaratıcı: ${game.creator}</p>
-            <p>Bahis: ${ethers.utils.formatEther(game.stake)} ETH</p>
-            <p>Durum: ${game.finished ? "Bitti" : "Devam Ediyor"}</p>
-        `;
+        if (gameInfoDiv) {
+            gameInfoDiv.innerHTML = `
+                <p>Oyun ID: ${gameId}</p>
+                <p>Yaratıcı: ${game.creator}</p>
+                <p>Bahis: ${ethers.utils.formatEther(game.stake)} ETH</p>
+                <p>Durum: ${game.finished ? "Bitti" : "Devam Ediyor"}</p>
+            `;
+        } else {
+            console.error("game-info elemanı bulunamadı.");
+        }
     } catch (error) {
         console.error("Oyun yüklenirken hata:", error);
     }
