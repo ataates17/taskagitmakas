@@ -458,6 +458,11 @@ async function loadFirebaseGames() {
                 await revealMove(gameId);
             });
         });
+        
+        // Debug için oyunları konsola yazdır
+        console.log("Açık oyunlar:", openGames);
+        console.log("Oyunlarım:", myGames);
+        console.log("Tamamlanan oyunlar:", finishedGames);
     } catch (error) {
         console.error("Oyunları yükleme hatası:", error);
         document.getElementById('games-list').innerHTML = `
@@ -475,8 +480,11 @@ function renderGamesList(games, type) {
     let html = '<div class="games-grid">';
     
     games.forEach(game => {
-        const gameId = game.blockchain?.gameId || 'Bekliyor';
+        const gameId = game.blockchain?.gameId || game.id || 'Bekliyor';
         const stake = weiToEth(game.stake);
+        
+        // Debug için
+        console.log(`Game ${game.id}:`, game);
         
         let statusText = '';
         let statusClass = '';
@@ -511,28 +519,24 @@ function renderGamesList(games, type) {
                     `;
                 } else {
                     actionButton = `
-                        <div class="waiting-reveal">Açıklama Bekleniyor</div>
+                        <div class="waiting-reveal">
+                            Hamle açıklanması bekleniyor...
+                        </div>
                     `;
                 }
             }
         } else if (type === 'finished') {
-            statusClass = 'status-finished';
-            
-            let resultText = '';
-            if (game.winnerAddress) {
-                if (game.winnerAddress.toLowerCase() === userAddress.toLowerCase()) {
-                    resultText = 'Kazandınız!';
-                    statusClass += ' status-won';
-                } else {
-                    resultText = 'Kaybettiniz';
-                    statusClass += ' status-lost';
-                }
+            if (game.winnerAddress === userAddress.toLowerCase()) {
+                statusClass = 'status-won';
+                statusText = 'Kazandınız';
+            } else if (game.winnerAddress === null) {
+                statusClass = 'status-tie';
+                statusText = 'Berabere';
             } else {
-                resultText = 'Berabere';
-                statusClass += ' status-tie';
+                statusClass = 'status-lost';
+                statusText = 'Kaybettiniz';
             }
             
-            statusText = resultText;
             actionButton = `
                 <div class="game-result">
                     <div class="moves">
@@ -573,6 +577,7 @@ function renderGamesList(games, type) {
     });
     
     html += '</div>';
+    console.log(`Rendered ${type} games HTML:`, html);
     return html;
 }
 
@@ -632,25 +637,18 @@ async function loadPlatformStats() {
 // Oyunları yükle
 async function loadGames() {
     try {
-        // Oyunları yüklemeden önce kullanıcı kontrolü
         if (!userAddress) {
             document.getElementById('games-list').innerHTML = '<p>Lütfen önce cüzdanınızı bağlayın</p>';
             return;
         }
         
-        if (!firebaseUser) {
-            // Kullanıcı giriş yapmamış, cüzdan adresi ile giriş yap
-            const success = await signInWithWalletAddress();
-            if (!success) {
-                document.getElementById('games-list').innerHTML = '<p>Kullanıcı oluşturulamadı. Lütfen cüzdanınızı kontrol edin.</p>';
-                return;
-            }
-        }
-        
         // Firebase'den oyunları yükle
         await loadFirebaseGames();
+        
+        // Debug için
+        console.log("Oyunlar yüklendi");
     } catch (error) {
-        console.error("Oyunları yükleme hatası:", error);
+        console.error("Oyun yükleme hatası:", error);
         document.getElementById('games-list').innerHTML = `
             <p class="error">Oyunlar yüklenirken bir hata oluştu: ${error.message}</p>
         `;
@@ -855,43 +853,41 @@ async function checkGameBeforeJoining(gameId) {
 // Firebase'de oyun oluştur
 async function createFirebaseGame(move, stake) {
     try {
-        if (!firebaseUser) {
-            // Kullanıcı giriş yapmamış, cüzdan adresi ile giriş yap
-            const success = await signInWithWalletAddress();
-            if (!success) {
-                throw new Error("Kullanıcı oluşturulamadı. Lütfen cüzdanınızı kontrol edin.");
-            }
+        if (!firebaseUser || !userAddress) {
+            throw new Error("Kullanıcı oturumu bulunamadı");
         }
         
-        // Salt ve commitment hash oluştur
+        // Rastgele salt değeri oluştur
         const salt = generateRandomSalt();
+        
+        // Commitment hash oluştur
         const commitHash = await createCommitment(move, salt);
         
-        // Firebase'e oyun bilgilerini kaydet
-        const gameRef = await db.collection('games').add({
-            creator: firebaseUser.uid,
-            creatorAddress: userAddress,
-            stake: ethers.utils.parseEther(stake.toString()).toString(),
-            commitHash: commitHash,
+        // Firebase'de oyun oluştur
+        const gameData = {
+            creatorAddress: userAddress.toLowerCase(),
+            stake: ethers.utils.parseEther(stake).toString(),
+            move: move,
             salt: salt,
-            move: parseInt(move),
+            commitHash: commitHash,
             state: 'CREATED',
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             blockchain: {
                 confirmed: false,
-                txHash: null,
-                gameId: null
+                pending: true
             }
-        });
+        };
         
+        // Firestore'a kaydet
+        const gameRef = await db.collection('games').add(gameData);
         console.log("Firebase'de oyun oluşturuldu:", gameRef.id);
         
-        // Arka planda blockchain işlemini başlat
-        createBlockchainGame(gameRef.id, commitHash, stake);
+        // Blockchain'de oyun oluştur
+        await createBlockchainGame(gameRef.id, commitHash, stake);
         
         return gameRef.id;
     } catch (error) {
-        console.error("Oyun oluşturma hatası:", error);
+        console.error("Firebase oyun oluşturma hatası:", error);
         throw error;
     }
 }
@@ -899,61 +895,66 @@ async function createFirebaseGame(move, stake) {
 // Blockchain'de oyun oluştur
 async function createBlockchainGame(firebaseGameId, commitHash, stake) {
     try {
-        // Blockchain'e oyun oluştur
-        const stakeWei = ethers.utils.parseEther(stake.toString());
-        const tx = await contract.createGame(commitHash, {
-            value: stakeWei,
+        if (!userAddress || !signer) {
+            throw new Error("Cüzdan bağlantısı bulunamadı");
+        }
+        
+        // Kontratı signer ile bağla
+        const gameContract = new ethers.Contract(contractAddress, contractABI, signer);
+        
+        // Wei cinsinden bahis miktarı
+        const weiAmount = ethers.utils.parseEther(stake);
+        
+        console.log("Blockchain'de oyun oluşturuluyor...");
+        console.log("Commit Hash:", commitHash);
+        console.log("Bahis Miktarı:", weiAmount.toString(), "wei");
+        
+        // Kontrat fonksiyonunu çağır
+        const tx = await gameContract.createGame(commitHash, {
+            value: weiAmount,
             gasLimit: 500000
         });
         
-        console.log("Blockchain transaction gönderildi:", tx.hash);
+        console.log("Transaction gönderildi:", tx.hash);
         
         // Firebase'i güncelle
         await db.collection('games').doc(firebaseGameId).update({
-            'blockchain.txHash': tx.hash,
-            'blockchain.pending': true
+            'blockchain.txHash': tx.hash
         });
         
         // Transaction'ı bekle
         const receipt = await tx.wait();
+        console.log("Transaction onaylandı:", receipt);
         
-        // Başarılı ise Firebase'i güncelle
-        if (receipt.status === 1) {
-            // GameCreated olayını bul
-            const event = receipt.events.find(e => e.event === 'GameCreated');
-            if (event) {
-                const gameId = event.args.gameId.toString();
-                
-                await db.collection('games').doc(firebaseGameId).update({
-                    'blockchain.gameId': gameId,
-                    'blockchain.confirmed': true,
-                    'blockchain.pending': false,
-                    'state': 'ACTIVE'
-                });
-                
-                console.log("Blockchain oyun oluşturuldu, ID:", gameId);
-            }
-        } else {
-            // Başarısız ise hata durumunu güncelle
+        // GameCreated olayını bul
+        const event = receipt.events.find(e => e.event === 'GameCreated');
+        if (event) {
+            const gameId = event.args.gameId.toString();
+            
+            // Firebase'i güncelle
             await db.collection('games').doc(firebaseGameId).update({
-                'blockchain.confirmed': false,
+                'blockchain.gameId': gameId,
+                'blockchain.confirmed': true,
                 'blockchain.pending': false,
-                'blockchain.error': 'Transaction failed',
-                'state': 'ERROR'
+                'state': 'ACTIVE'
             });
+            
+            console.log("Oyun başarıyla oluşturuldu! Blockchain Game ID:", gameId);
         }
         
         return receipt;
     } catch (error) {
         console.error("Blockchain oyun oluşturma hatası:", error);
         
-        // Hata durumunu Firebase'e kaydet
-        await db.collection('games').doc(firebaseGameId).update({
-            'blockchain.confirmed': false,
-            'blockchain.pending': false,
-            'blockchain.error': error.message,
-            'state': 'ERROR'
-        });
+        // Firebase'i güncelle
+        if (firebaseGameId) {
+            await db.collection('games').doc(firebaseGameId).update({
+                'blockchain.confirmed': false,
+                'blockchain.pending': false,
+                'blockchain.error': error.message,
+                'state': 'ERROR'
+            });
+        }
         
         throw error;
     }
