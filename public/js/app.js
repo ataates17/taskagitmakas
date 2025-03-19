@@ -277,8 +277,8 @@ async function connectWallet() {
         // Kullanıcı adresini göster - HTML yapınıza göre güncellendi
         const walletInfo = document.getElementById('wallet-info');
         if (walletInfo) {
-            walletInfo.textContent = shortenAddress(userAddress);
-            walletInfo.style.display = 'block';
+        walletInfo.textContent = shortenAddress(userAddress);
+        walletInfo.style.display = 'block';
         }
         
         // Connect butonunu gizle
@@ -317,16 +317,16 @@ async function createGameTransaction(commit, moveAndSecret) {
             value: stake,
             gasLimit: 300000
         });
-
+        
         console.log("Transaction gönderildi:", tx.hash);
-
+        
         const receipt = await tx.wait();
         console.log("Transaction onaylandı:", receipt);
-
+        
         if (receipt.status === 0) {
             throw new Error("Transaction başarısız oldu");
         }
-
+        
         // Oluşturulan oyunu kontrol et
         const gameId = await contract.gameCount() - 1;
         const game = await contract.games(gameId);
@@ -368,7 +368,7 @@ async function handleJoinGame() {
             joinButton.textContent = 'Oyuna Katıl';
             return;
         }
-        
+
         // Form değerlerini al
         const gameId = document.getElementById('game-id').value;
         const moveSelect = document.getElementById('join-move');
@@ -398,7 +398,7 @@ async function handleJoinGame() {
             joinButton.textContent = 'Oyuna Katıl';
             return;
         }
-        
+
         resultDiv.innerHTML = `
             <div class="loading">
                 <p>Transaction hazırlanıyor...</p>
@@ -406,7 +406,7 @@ async function handleJoinGame() {
             </div>
         `;
         resultDiv.className = "result pending";
-        
+
         // İşlemi gönder
         const receipt = await joinGameTransaction(gameId, move);
         console.log("Transaction onaylandı:", receipt);
@@ -436,7 +436,7 @@ async function handleJoinGame() {
             joinButton.disabled = false;
             joinButton.textContent = 'Oyuna Katıl';
         }, 3000);
-        
+
     } catch (error) {
         console.error("Hata:", error);
         resultDiv.innerHTML = `<div class="error">Hata: ${error.message}</div>`;
@@ -457,12 +457,12 @@ async function loadGameDetails() {
         if (isNaN(gameIdNum) || gameIdNum < 0) {
             throw new Error("Geçersiz oyun ID");
         }
-        
+
         const game = await contract.games(gameIdNum);
         if (!game || !game.creator || game.creator === ethers.constants.AddressZero) {
             throw new Error("Oyun bulunamadı");
         }
-        
+
         const stake = ethers.utils.formatEther(game.stake);
         
         // Bahis miktarını güncelle
@@ -527,7 +527,7 @@ async function loadGames() {
                     <div class="game-header">
                         <div class="game-id">Oyun ID: ${i}</div>
                         <div class="game-stake">${ethers.utils.formatEther(game.stake)} ETH</div>
-                    </div>
+        </div>
                     <div class="game-details">
                         <div class="creator">Yaratıcı: ${shortenAddress(game.creator)}</div>
                         <div class="challenger">Rakip: ${game.challenger !== ethers.constants.AddressZero ? shortenAddress(game.challenger) : "Bekleniyor"}</div>
@@ -588,7 +588,7 @@ async function loadGames() {
                     } else if (game.winner.toLowerCase() === userAddress.toLowerCase()) {
                         winnerText.textContent = 'Tebrikler! Kazandınız!';
                         winnerText.className += ' win';
-                    } else {
+                } else {
                         winnerText.textContent = 'Üzgünüz, kaybettiniz.';
                         winnerText.className += ' lose';
                     }
@@ -596,7 +596,7 @@ async function loadGames() {
                 }
                 
                 gameItems.push(gameItem);
-            } catch (error) {
+    } catch (error) {
                 console.error(`Oyun ${i} yüklenirken hata:`, error);
             }
         }
@@ -670,16 +670,16 @@ async function joinGameTransaction(gameId, move) {
         });
         
         console.log("Transaction gönderildi:", tx.hash);
-        
+
         const receipt = await tx.wait();
         console.log("Transaction onaylandı:", receipt);
-        
+
         if (receipt.status === 0) {
             throw new Error("Transaction başarısız oldu");
         }
-        
+
         return receipt;
-        
+
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
         
@@ -692,7 +692,7 @@ async function joinGameTransaction(gameId, move) {
         } else if (error.data) {
             // Revert sebebini bulmaya çalış
             errorMessage += "Kontrat hatası";
-        } else {
+            } else {
             errorMessage += error.message;
         }
         
@@ -771,7 +771,7 @@ async function claimRewardTransaction(gameId) {
             errorMessage += error.error.message;
         } else if (error.data) {
             errorMessage += "Kontrat hatası";
-        } else {
+    } else {
             errorMessage += error.message;
         }
         
@@ -797,9 +797,9 @@ async function handleRevealResult(gameId) {
         alert("Sonuç başarıyla gösterildi!");
         
         // Oyunları yenile
-        await loadGames();
-        
-    } catch (error) {
+                await loadGames();
+                
+            } catch (error) {
         console.error("Sonuç gösterme hatası:", error);
         alert("Hata: " + error.message);
     }
@@ -822,7 +822,7 @@ async function handleClaimReward(gameId) {
         alert("Ödül başarıyla çekildi!");
         
         // Oyunları yenile
-        await loadGames();
+                    await loadGames();
         
     } catch (error) {
         console.error("Ödül çekme hatası:", error);

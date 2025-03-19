@@ -44,10 +44,10 @@ contract RockPaperScissorsV5 {
             creatorBalance: 0,
             challengerBalance: 0
         });
-
+        
         emit GameCreated(gameId, msg.sender, msg.value);
     }
-
+    
     function joinGame(uint256 gameId, Move move) external payable {
         Game storage game = games[gameId];
         require(game.state == GameState.Created, "Game must be in Created state");
