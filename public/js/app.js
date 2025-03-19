@@ -1090,6 +1090,8 @@ async function joinGameTransaction(gameId, move) {
             throw new Error("Geçersiz bahis miktarı");
         }
 
+        console.log("Gönderilen stake miktarı:", ethers.utils.formatEther(stake), "ETH");
+
         // İşlemi gönder
         const tx = await contract.joinGame(gameId, move, {
             value: stake, // Doğru stake miktarını gönder
