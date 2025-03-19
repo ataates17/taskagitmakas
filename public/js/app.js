@@ -277,197 +277,6 @@ async function handleJoinGame() {
     }
 }
 
-// Gas fiyatını ayarla
-async function getOptimizedGasPrice() {
-    try {
-        // Base fee'yi al
-        const block = await provider.getBlock("latest");
-        const baseFee = block.baseFeePerGas;
-
-        // Mevcut gas fiyatını al
-        const gasPrice = await provider.getGasPrice();
-
-        // Base fee'nin 2 katı veya mevcut gas fiyatının %150'si - hangisi yüksekse
-        const recommendedPrice = ethers.BigNumber.from(
-            Math.max(
-                baseFee.mul(2).toNumber(),
-                gasPrice.mul(150).div(100).toNumber()
-            )
-        );
-
-        console.log("Gas fiyatları:", {
-            baseFee: ethers.utils.formatUnits(baseFee, "gwei") + " gwei",
-            currentPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " gwei",
-            recommendedPrice: ethers.utils.formatUnits(recommendedPrice, "gwei") + " gwei"
-        });
-
-        return recommendedPrice;
-    } catch (error) {
-        console.error("Gas fiyatı hesaplama hatası:", error);
-        // Hata durumunda mevcut fiyatın %200'ünü kullan
-        const gasPrice = await provider.getGasPrice();
-        return gasPrice.mul(200).div(100);
-    }
-}
-
-// Oyuna katılma transaction'ı
-async function joinGameTransaction(gameId, move, stake) {
-    try {
-        // Move enum kontrolü (1: Rock, 2: Paper, 3: Scissors)
-        const moveMap = {
-            1: "Rock",
-            2: "Paper", 
-            3: "Scissors"
-        };
-
-        if (!moveMap[move]) {
-            throw new Error("Geçersiz hamle! Lütfen Taş (1), Kağıt (2) veya Makas (3) seçin");
-        }
-
-        // gameId'yi sayı olarak kontrol et ve BigNumber'a çevir
-        const gameIdNum = parseInt(gameId);
-        if (isNaN(gameIdNum) || gameIdNum < 0) {
-            throw new Error("Geçersiz oyun ID");
-        }
-
-        // Move'u uint8 olarak gönder
-        const moveValue = ethers.BigNumber.from(move);
-        
-        // Stake'i BigNumber'a çevir
-        const stakeWei = ethers.utils.parseEther(stake.toString());
-
-        // Oyun bilgilerini kontrol et
-        const gameInfo = await contract.getGameInfo(gameIdNum);
-        console.log("Oyun bilgileri:", {
-            creator: gameInfo.creator,
-            challenger: gameInfo.challenger,
-            stake: ethers.utils.formatEther(gameInfo.stake),
-            state: gameInfo.state
-        });
-
-        if (gameInfo.creator === ethers.constants.AddressZero) {
-            throw new Error("Oyun bulunamadı");
-        }
-
-        if (gameInfo.creator === userAddress) {
-            throw new Error("Kendi oyununuza katılamazsınız");
-        }
-
-        // Oyun durumunu kontrol et
-        const gameState = await contract.getGameState(gameIdNum);
-        console.log("Oyun durumu:", gameState);
-
-        if (gameState.state !== 0) {
-            throw new Error("Bu oyuna katılınamaz");
-        }
-
-        // Stake kontrolü
-        if (!stakeWei.eq(gameInfo.stake)) {
-            throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
-        }
-
-        // Bakiye kontrolü
-        const balance = await provider.getBalance(userAddress);
-        if (balance.lt(stakeWei)) {
-            throw new Error("Yetersiz bakiye");
-        }
-
-        // Transaction'ı göndermeden önce son kontroller
-        const gameCount = await contract.gameCount();
-        console.log("Toplam oyun sayısı:", gameCount.toString());
-
-        // Oyun geçerliliğini kontrol et
-        const isValid = await contract.isValidGame(gameIdNum);
-        if (!isValid) {
-            throw new Error("Bu oyun artık geçerli değil");
-        }
-
-        // Aktif oyun sayısını kontrol et
-        const activeGames = await contract.getActiveGames(userAddress);
-        console.log("Aktif oyun sayısı:", activeGames.toString());
-
-        // Gas fiyatını optimize et
-        const gasPrice = await getOptimizedGasPrice();
-
-        // Transaction parametreleri
-        const txParams = {
-            value: stakeWei,
-            gasLimit: 150000,
-            type: 2, // EIP-1559
-            maxFeePerGas: ethers.utils.parseUnits("2", "gwei"),
-            maxPriorityFeePerGas: ethers.utils.parseUnits("1", "gwei")
-        };
-
-        // Legacy transaction için yedek parametreler
-        const legacyTxParams = {
-            value: stakeWei,
-            gasLimit: 150000,
-            gasPrice: await provider.getGasPrice()
-        };
-
-        // Transaction'ı gönder
-        let tx;
-        try {
-            // Önce EIP-1559 formatını dene
-            tx = await contract.joinGame(gameIdNum, moveValue, txParams);
-        } catch (error) {
-            console.log("EIP-1559 başarısız, legacy transaction deneniyor...");
-            tx = await contract.joinGame(gameIdNum, moveValue, legacyTxParams);
-        }
-
-        // Transaction'ı bekle
-        console.log("Transaction onayı bekleniyor...");
-        const receipt = await tx.wait(1);
-        console.log("Transaction onaylandı:", receipt);
-
-        if (receipt.status === 0) {
-            // Hata sebebini bulmaya çalış
-            try {
-                await provider.call(tx, receipt.blockNumber);
-            } catch (error) {
-                const reason = error.data || error.message;
-                throw new Error("Transaction başarısız oldu: " + reason);
-            }
-            throw new Error("Transaction başarısız oldu");
-        }
-
-        // Oyun durumunu kontrol et
-        const gameStateAfter = await contract.getGameState(gameIdNum);
-        console.log("Oyun durumu (katılımdan sonra):", gameStateAfter);
-
-        return receipt;
-
-    } catch (error) {
-        console.error("Join Transaction detaylı hata:", error);
-        
-        // Hata mesajını daha anlaşılır hale getir
-        let errorMessage = "Oyuna katılırken bir hata oluştu";
-        
-        if (error.data) {
-            // Revert reason'ı bul
-            const data = error.data;
-            const reason = data.substring(138);
-            const decoded = ethers.utils.toUtf8String('0x' + reason);
-            errorMessage = decoded;
-        } else if (error.message) {
-            if (error.message.includes("insufficient funds")) {
-                errorMessage = "Yetersiz bakiye";
-            } else if (error.message.includes("gas required exceeds")) {
-                errorMessage = "Gas limiti çok yüksek";
-            } else if (error.message.includes("nonce")) {
-                errorMessage = "Lütfen bekleyen işlemlerin tamamlanmasını bekleyin";
-            } else if (error.message.includes("execution reverted")) {
-                const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
-                errorMessage = revertReason;
-            } else {
-                errorMessage = error.message;
-            }
-        }
-        
-        throw new Error(errorMessage);
-    }
-}
-
 // Oyun detaylarını yükle
 async function loadGameDetails() {
     try {
@@ -727,4 +536,165 @@ async function validateTransaction(value) {
         gasPrice: gasPrices.gasPrice,
         gasLimit: 150000
     };
+}
+
+// Oyuna katılma transaction'ı
+async function joinGameTransaction(gameId, move, stake) {
+    try {
+        // Move enum kontrolü (1: Rock, 2: Paper, 3: Scissors)
+        const moveMap = {
+            1: "Rock",
+            2: "Paper", 
+            3: "Scissors"
+        };
+
+        if (!moveMap[move]) {
+            throw new Error("Geçersiz hamle! Lütfen Taş (1), Kağıt (2) veya Makas (3) seçin");
+        }
+
+        // gameId'yi sayı olarak kontrol et ve BigNumber'a çevir
+        const gameIdNum = parseInt(gameId);
+        if (isNaN(gameIdNum) || gameIdNum < 0) {
+            throw new Error("Geçersiz oyun ID");
+        }
+
+        // Move'u uint8 olarak gönder
+        const moveValue = ethers.BigNumber.from(move);
+        
+        // Stake'i BigNumber'a çevir
+        const stakeWei = ethers.utils.parseEther(stake.toString());
+
+        // Oyun bilgilerini kontrol et
+        const gameInfo = await contract.getGameInfo(gameIdNum);
+        console.log("Oyun bilgileri:", {
+            creator: gameInfo.creator,
+            challenger: gameInfo.challenger,
+            stake: ethers.utils.formatEther(gameInfo.stake),
+            state: gameInfo.state
+        });
+
+        if (gameInfo.creator === ethers.constants.AddressZero) {
+            throw new Error("Oyun bulunamadı");
+        }
+
+        if (gameInfo.creator === userAddress) {
+            throw new Error("Kendi oyununuza katılamazsınız");
+        }
+
+        // Oyun durumunu kontrol et
+        const gameState = await contract.getGameState(gameIdNum);
+        console.log("Oyun durumu:", gameState);
+
+        if (gameState.state !== 0) {
+            throw new Error("Bu oyuna katılınamaz");
+        }
+
+        // Stake kontrolü
+        if (!stakeWei.eq(gameInfo.stake)) {
+            throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
+        }
+
+        // Bakiye kontrolü
+        const balance = await provider.getBalance(userAddress);
+        if (balance.lt(stakeWei)) {
+            throw new Error("Yetersiz bakiye");
+        }
+
+        // Transaction'ı göndermeden önce son kontroller
+        const gameCount = await contract.gameCount();
+        console.log("Toplam oyun sayısı:", gameCount.toString());
+
+        // Oyun geçerliliğini kontrol et
+        const isValid = await contract.isValidGame(gameIdNum);
+        if (!isValid) {
+            throw new Error("Bu oyun artık geçerli değil");
+        }
+
+        // Aktif oyun sayısını kontrol et
+        const activeGames = await contract.getActiveGames(userAddress);
+        console.log("Aktif oyun sayısı:", activeGames.toString());
+
+        // Gas fiyatını al ve yüksek tut
+        const feeData = await provider.getFeeData();
+        console.log("Fee data:", {
+            maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei"),
+            maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
+            gasPrice: ethers.utils.formatUnits(feeData.gasPrice, "gwei")
+        });
+
+        // Legacy transaction parametreleri - yüksek gas fiyatı
+        const txParams = {
+            value: stakeWei,
+            gasLimit: 300000, // Gas limitini yükselttik
+            gasPrice: feeData.gasPrice.mul(2), // Gas fiyatını 2 katına çıkardık
+            type: 0 // Legacy transaction
+        };
+
+        console.log("Transaction parametreleri:", {
+            gameId: gameIdNum,
+            move: moveValue.toString(),
+            value: ethers.utils.formatEther(stakeWei),
+            gasLimit: txParams.gasLimit,
+            gasPrice: ethers.utils.formatUnits(txParams.gasPrice, "gwei") + " gwei",
+            estimatedCost: ethers.utils.formatEther(
+                txParams.gasPrice.mul(txParams.gasLimit).add(stakeWei)
+            ) + " ETH"
+        });
+
+        // Transaction'ı gönder
+        console.log("Transaction gönderiliyor...");
+        const tx = await contract.joinGame(gameIdNum, moveValue, txParams);
+        console.log("Transaction gönderildi:", tx.hash);
+
+        // Transaction'ı bekle
+        console.log("Transaction onayı bekleniyor...");
+        const receipt = await tx.wait(1);
+        console.log("Transaction onaylandı:", receipt);
+
+        if (receipt.status === 0) {
+            // Hata sebebini bulmaya çalış
+            try {
+                await provider.call(tx, receipt.blockNumber);
+            } catch (error) {
+                const reason = error.data || error.message;
+                throw new Error("Transaction başarısız oldu: " + reason);
+            }
+            throw new Error("Transaction başarısız oldu");
+        }
+
+        // Oyun durumunu kontrol et
+        const gameStateAfter = await contract.getGameState(gameIdNum);
+        console.log("Oyun durumu (katılımdan sonra):", gameStateAfter);
+
+        return receipt;
+
+    } catch (error) {
+        console.error("Join Transaction detaylı hata:", error);
+        
+        // Hata mesajını daha anlaşılır hale getir
+        let errorMessage = "Oyuna katılırken bir hata oluştu";
+        
+        if (error.data) {
+            // Revert reason'ı bul
+            const data = error.data;
+            const reason = data.substring(138);
+            const decoded = ethers.utils.toUtf8String('0x' + reason);
+            errorMessage = decoded;
+        } else if (error.message) {
+            if (error.message.includes("insufficient funds")) {
+                errorMessage = "Yetersiz bakiye";
+            } else if (error.message.includes("gas required exceeds")) {
+                errorMessage = "Gas limiti çok yüksek";
+            } else if (error.message.includes("nonce")) {
+                errorMessage = "Lütfen bekleyen işlemlerin tamamlanmasını bekleyin";
+            } else if (error.message.includes("execution reverted")) {
+                const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
+                errorMessage = revertReason;
+            } else {
+                errorMessage = error.message;
+            }
+        }
+        
+        throw new Error(errorMessage);
+    }
 } 
