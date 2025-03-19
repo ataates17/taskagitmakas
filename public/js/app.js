@@ -284,62 +284,22 @@ async function loadPlatformStats() {
 // Oyunları yükle ve kategorilere ayır
 async function loadGames() {
     try {
-        if (!contract || !userAddress) return;
-        
-        const gamesList = document.getElementById('games-list');
-        gamesList.innerHTML = '<p>Oyunlar yükleniyor...</p>';
-        
-        // Toplam oyun sayısını al
-        const gameCount = await contract.gameCount();
-        console.log("Toplam oyun sayısı:", gameCount.toString());
-        
-        // Son 30 oyunu kontrol et
-        const openGames = [];
-        const activeGames = [];
-        const finishedGames = [];
-        
-        const startIndex = Math.max(0, gameCount.toNumber() - 30);
-        
-        for (let i = gameCount.toNumber() - 1; i >= startIndex; i--) {
-            try {
-                // Oyun bilgilerini al
-                const gameInfo = await contract.getGameInfo(i);
-                const gameState = await contract.getGameState(i);
-                
-                const gameData = {
-                    id: i,
-                    creator: gameInfo.creator,
-                    challenger: gameInfo.challenger,
-                    stake: ethers.utils.formatEther(gameInfo.stake),
-                    state: gameInfo.state,
-                    winner: gameInfo.winner,
-                    isUserGame: gameInfo.creator === userAddress || gameInfo.challenger === userAddress
-                };
-                
-                // Oyunları kategorilere ayır
-                if (gameInfo.state === 0) { // Created
-                    openGames.push(gameData);
-                } else if (gameInfo.creator === userAddress || gameInfo.challenger === userAddress) {
-                    if (gameInfo.state === 3) { // Finished
-                        finishedGames.push(gameData);
-                    } else { // Joined or Revealed
-                        activeGames.push(gameData);
-                    }
-                }
-            } catch (error) {
-                console.error(`Oyun ${i} yüklenirken hata:`, error);
-            }
-        }
-        
-        // Oyunları render et
-        renderGameTabs(openGames, activeGames, finishedGames);
-        
-        // Reveal gerektiren oyunları kontrol et
-        checkGamesForReveal();
-        
+        const gameId = 0; // Örnek olarak ilk oyunu yüklüyoruz
+        const game = await contract.games(gameId);
+
+        console.log("Oyun bilgileri:", game);
+
+        // Oyun bilgilerini kullanarak arayüzü güncelleyin
+        // Örneğin:
+        const gameInfoDiv = document.getElementById('game-info');
+        gameInfoDiv.innerHTML = `
+            <p>Oyun ID: ${gameId}</p>
+            <p>Yaratıcı: ${game.creator}</p>
+            <p>Bahis: ${ethers.utils.formatEther(game.stake)} ETH</p>
+            <p>Durum: ${game.finished ? "Bitti" : "Devam Ediyor"}</p>
+        `;
     } catch (error) {
-        console.error("Oyunları yükleme hatası:", error);
-        document.getElementById('games-list').innerHTML = '<p>Oyunlar yüklenirken hata oluştu.</p>';
+        console.error("Oyun yüklenirken hata:", error);
     }
 }
 
