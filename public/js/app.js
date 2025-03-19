@@ -570,8 +570,15 @@ async function joinGameTransaction(gameId, move) {
         
         console.log("Gönderilen stake miktarı:", ethers.utils.formatEther(stake), "ETH");
         
-        // Secret değeri
-        const secret = "mySecret";
+        // Move değerini kontrol et (1, 2, 3 aralığında olmalı)
+        if (move < 1 || move > 3) {
+            throw new Error("Geçersiz hamle! 1-Taş, 2-Kağıt, 3-Makas olmalıdır.");
+        }
+        
+        // Secret değeri - empty string ile deneyebiliriz
+        const secret = "";
+        
+        console.log(`Oyun ${gameId}'ye katılım: Hamle=${move}, Secret="${secret}"`);
         
         // İşlemi gönder
         const tx = await contract.joinGame(gameId, move, secret, {
@@ -592,7 +599,21 @@ async function joinGameTransaction(gameId, move) {
         
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
-        throw new Error("Oyuna katılırken bir hata oluştu: " + error.message);
+        
+        // Hatanın daha detaylı analizi
+        let errorMessage = "Oyuna katılırken bir hata oluştu: ";
+        
+        // Kontrat hata mesajını çıkarmaya çalış
+        if (error.error && error.error.message) {
+            errorMessage += error.error.message;
+        } else if (error.data) {
+            // Revert sebebini bulmaya çalış
+            errorMessage += "Kontrat hatası";
+        } else {
+            errorMessage += error.message;
+        }
+        
+        throw new Error(errorMessage);
     }
 }
 
