@@ -3,47 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Taş Kağıt Makas - Sepolia Testnet</title>
+    <title>Taş Kağıt Makas - Blockchain Oyunu</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Taş Kağıt Makas - Sepolia Testnet</h1>
+    <header>
+        <div class="header-content">
+            <h1>Taş Kağıt Makas</h1>
             <div class="wallet-connect">
                 <button id="connect-wallet" class="btn primary">Cüzdana Bağlan</button>
                 <div id="wallet-info" class="wallet-info"></div>
             </div>
-        </header>
+        </div>
+    </header>
 
+    <div class="container">
         <main>
             <section class="card">
-                <h2>Yeni Oyun Oluştur</h2>
+                <div class="card-header">
+                    <h2>Yeni Oyun Oluştur</h2>
+                </div>
                 <div class="game-creation">
-                    <h3>Yeni Oyun Oluştur</h3>
-                    <select id="create-move">
-                        <option value="">Hamle Seçin</option>
-                        <option value="1">Taş</option>
-                        <option value="2">Kağıt</option>
-                        <option value="3">Makas</option>
-                    </select>
-                    <input type="number" id="create-stake" placeholder="Bahis Miktarı (ETH)" step="0.01" min="0.0001">
-                    <button id="create-game">Oyun Oluştur</button>
+                    <div class="form-group">
+                        <label for="create-move">Hamlenizi Seçin</label>
+                        <select id="create-move" class="form-control" required>
+                            <option value="">Hamle Seçin</option>
+                            <option value="1">Taş</option>
+                            <option value="2">Kağıt</option>
+                            <option value="3">Makas</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="create-stake">Bahis Miktarı (ETH)</label>
+                        <input type="number" id="create-stake" class="form-control" placeholder="0.001" step="0.001" min="0.0001">
+                    </div>
+                    <button id="create-game" class="btn primary">Oyun Oluştur</button>
                 </div>
                 <div id="create-result" class="result"></div>
             </section>
 
             <section class="card">
-                <h2>Mevcut Oyunlar</h2>
-                <button id="refresh-games" class="btn secondary">Oyunları Yenile</button>
+                <div class="card-header">
+                    <h2>Oyunlar</h2>
+                    <button id="refresh-games" class="btn outline secondary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                        Yenile
+                    </button>
+                </div>
                 <div id="games-list" class="games-list">
                     <p>Oyunlar yükleniyor...</p>
                 </div>
             </section>
 
             <section class="card">
-                <h2>Oyuna Katıl</h2>
+                <div class="card-header">
+                    <h2>Oyuna Katıl</h2>
+                </div>
                 <div class="form-group">
                     <label for="game-id">Oyun ID:</label>
                     <input type="number" id="game-id" class="form-control" min="0">
@@ -52,9 +69,9 @@
                     <label for="join-move">Hamlenizi Seçin:</label>
                     <select id="join-move" class="form-control" required>
                         <option value="">Hamle Seçin</option>
-                        <option value="1">Taş (1)</option>
-                        <option value="2">Kağıt (2)</option>
-                        <option value="3">Makas (3)</option>
+                        <option value="1">Taş</option>
+                        <option value="2">Kağıt</option>
+                        <option value="3">Makas</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -66,22 +83,26 @@
             </section>
 
             <section class="card">
-                <h2>Platform İstatistikleri</h2>
+                <div class="card-header">
+                    <h2>Platform İstatistikleri</h2>
+                </div>
                 <div id="platform-stats" class="stats">
                     <p>İstatistikler yükleniyor...</p>
                 </div>
             </section>
 
-            <!-- Oyun oluştur ve katıl butonu -->
+            <!-- Test butonu -->
             <div class="form-group">
-                <button id="create-and-join" class="btn btn-warning">Test: Oyun Oluştur ve Katıl</button>
+                <button id="create-and-join" class="btn outline">Test: Oyun Oluştur ve Katıl</button>
                 <div id="test-result" class="result"></div>
             </div>
         </main>
 
         <footer>
-            <p>Taş Kağıt Makas Oyunu - Sepolia Testnet Versiyonu</p>
-            <p>Kontrat Adresi: <span id="contract-address">Yükleniyor...</span></p>
+            <div class="footer-content">
+                <p>Taş Kağıt Makas Oyunu - Sepolia Testnet Versiyonu</p>
+                <p>Kontrat Adresi: <span id="contract-address" class="contract-address">Yükleniyor...</span></p>
+            </div>
         </footer>
     </div>
 

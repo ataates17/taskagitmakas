@@ -405,9 +405,9 @@ function renderGameTabs(openGames, activeGames, finishedGames) {
     
     tabsContainer.innerHTML = `
         <div class="tabs">
-            <button class="tab-btn active" data-tab="open-games">Açık Oyunlar (${openGames.length})</button>
-            <button class="tab-btn" data-tab="active-games">Aktif Oyunlarım (${activeGames.length})</button>
-            <button class="tab-btn" data-tab="finished-games">Tamamlanan Oyunlarım (${finishedGames.length})</button>
+            <button class="tab-btn active" data-tab="open-games">Açık Oyunlar <span class="badge">${openGames.length}</span></button>
+            <button class="tab-btn" data-tab="active-games">Aktif Oyunlarım <span class="badge">${activeGames.length}</span></button>
+            <button class="tab-btn" data-tab="finished-games">Tamamlanan Oyunlarım <span class="badge">${finishedGames.length}</span></button>
         </div>
     `;
     
@@ -503,48 +503,48 @@ function renderGamesTable(games, tableType) {
         }
         
         // Durum metni ve butonlar
-        let stateText = '';
+        let statusBadge = '';
         let actionButton = '';
         
         switch(game.state) {
             case 0: // Created
-                stateText = 'Oluşturuldu';
+                statusBadge = '<span class="status-badge status-created">Oluşturuldu</span>';
                 if (game.creator === userAddress) {
-                    actionButton = `<button class="btn small" onclick="cancelGame(${game.id})">İptal Et</button>`;
+                    actionButton = `<button class="btn small danger" onclick="cancelGame(${game.id})">İptal Et</button>`;
                 } else {
                     actionButton = `<button class="btn small primary" onclick="prepareJoinGame(${game.id})">Katıl</button>`;
                 }
                 break;
             case 1: // Joined
-                stateText = 'Katılındı';
+                statusBadge = '<span class="status-badge status-joined">Katılındı</span>';
                 if (game.creator === userAddress) {
                     actionButton = `<button class="btn small primary" onclick="handleRevealMove(${game.id})">Reveal</button>`;
                 } else if (game.challenger === userAddress) {
-                    stateText += ' (Reveal bekleniyor)';
+                    statusBadge = '<span class="status-badge status-joined">Reveal Bekleniyor</span>';
                 }
                 break;
             case 2: // Revealed
-                stateText = 'Açıklandı';
+                statusBadge = '<span class="status-badge status-revealed">Açıklandı</span>';
                 break;
             case 3: // Finished
-                stateText = 'Tamamlandı';
+                statusBadge = '<span class="status-badge status-finished">Tamamlandı</span>';
                 if (game.winner === userAddress) {
-                    stateText += ' <span class="win-badge">Kazandınız!</span>';
+                    statusBadge += ' <span class="badge win-badge">Kazandınız!</span>';
                 } else if (game.winner !== ethers.constants.AddressZero && 
                           (game.creator === userAddress || game.challenger === userAddress)) {
-                    stateText += ' <span class="lose-badge">Kaybettiniz</span>';
+                    statusBadge += ' <span class="badge lose-badge">Kaybettiniz</span>';
                 } else if (game.winner === ethers.constants.AddressZero) {
-                    stateText += ' <span class="draw-badge">Berabere</span>';
+                    statusBadge += ' <span class="badge draw-badge">Berabere</span>';
                 }
                 break;
         }
         
         tr.innerHTML = `
             <td>${game.id}</td>
-            <td>${shortenAddress(game.creator)}${game.creator === userAddress ? ' <span class="user-badge">Siz</span>' : ''}</td>
-            <td>${game.challenger ? shortenAddress(game.challenger) + (game.challenger === userAddress ? ' <span class="user-badge">Siz</span>' : '') : '-'}</td>
+            <td>${shortenAddress(game.creator)}${game.creator === userAddress ? ' <span class="badge user-badge">Siz</span>' : ''}</td>
+            <td>${game.challenger ? shortenAddress(game.challenger) + (game.challenger === userAddress ? ' <span class="badge user-badge">Siz</span>' : '') : '-'}</td>
             <td>${game.stake} ETH</td>
-            <td>${stateText}</td>
+            <td>${statusBadge}</td>
             <td>${actionButton}</td>
         `;
         
