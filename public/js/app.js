@@ -34,51 +34,103 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Ethereum sağlayıcısını kontrol et
     if (window.ethereum) {
-        provider = new ethers.providers.Web3Provider(window.ethereum);
-        contract = new ethers.Contract(contractAddress, contractABI, provider);
-        
-        // Cüzdan bağlı mı kontrol et
         try {
-            const accounts = await provider.listAccounts();
+            // Modern provider (EIP-1193)
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            contract = new ethers.Contract(contractAddress, contractABI, provider);
+            
+            // Cüzdan bağlı mı kontrol et
+            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
             if (accounts.length > 0) {
                 await connectWallet();
             }
+            
+            // Platform istatistiklerini yükle
+            loadPlatformStats();
         } catch (error) {
-            console.error("Cüzdan kontrolü hatası:", error);
+            console.error("Provider başlatma hatası:", error);
+            alert("Ethereum provider başlatılamadı. Lütfen MetaMask'ı kontrol edin.");
         }
-        
-        // Platform istatistiklerini yükle
+    } else if (window.web3) {
+        // Legacy provider
+        provider = new ethers.providers.Web3Provider(window.web3.currentProvider);
+        contract = new ethers.Contract(contractAddress, contractABI, provider);
         loadPlatformStats();
     } else {
         alert("Ethereum sağlayıcısı bulunamadı. Lütfen MetaMask yükleyin.");
+    }
+
+    // Ethereum provider olaylarını dinle
+    if (window.ethereum) {
+        window.ethereum.on('accountsChanged', async (accounts) => {
+            console.log('Hesap değişti:', accounts);
+            if (accounts.length > 0) {
+                await connectWallet();
+            } else {
+                // Kullanıcı bağlantıyı kesti
+                userAddress = null;
+                signer = null;
+                
+                // UI'ı güncelle
+                const walletInfo = document.getElementById('wallet-info');
+                walletInfo.textContent = '';
+                walletInfo.style.display = 'none';
+                
+                // Oyun listesini temizle
+                document.getElementById('games-list').innerHTML = '<p>Lütfen önce cüzdanınızı bağlayın</p>';
+            }
+        });
+        
+        window.ethereum.on('chainChanged', (chainId) => {
+            console.log('Zincir değişti:', chainId);
+            // Sayfayı yenile
+            window.location.reload();
+        });
+        
+        window.ethereum.on('disconnect', (error) => {
+            console.log('Provider bağlantısı kesildi:', error);
+            // UI'ı güncelle
+            const walletInfo = document.getElementById('wallet-info');
+            walletInfo.textContent = '';
+            walletInfo.style.display = 'none';
+        });
     }
 });
 
 // Cüzdana bağlan
 async function connectWallet() {
     try {
-        await provider.send("eth_requestAccounts", []);
-        signer = provider.getSigner();
-        userAddress = await signer.getAddress();
-        
-        // Bağlı cüzdan bilgisini göster
-        const walletInfo = document.getElementById('wallet-info');
-        walletInfo.textContent = shortenAddress(userAddress);
-        walletInfo.style.display = 'block';
-        
-        // Kontratı signer ile bağla
-        contract = new ethers.Contract(contractAddress, contractABI, signer);
-        
-        // Oyunları yükle
-        loadGames();
-        
-        // Kullanıcı bilgilerini yükle
-        loadUserInfo();
-        
-        // Oyun durumunu dinle ve otomatik reveal yap
-        await setupGameEventListeners();
-        
-        return true;
+        // Modern request method (EIP-1193)
+        if (window.ethereum) {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            if (accounts.length === 0) {
+                throw new Error("Kullanıcı cüzdan erişimine izin vermedi");
+            }
+            
+            signer = provider.getSigner();
+            userAddress = await signer.getAddress();
+            
+            // Bağlı cüzdan bilgisini göster
+            const walletInfo = document.getElementById('wallet-info');
+            walletInfo.textContent = shortenAddress(userAddress);
+            walletInfo.style.display = 'block';
+            
+            // Kontratı signer ile bağla
+            contract = new ethers.Contract(contractAddress, contractABI, signer);
+            
+            // Oyunları yükle
+            loadGames();
+            
+            // Kullanıcı bilgilerini yükle
+            loadUserInfo();
+            
+            // Oyun durumunu dinle ve otomatik reveal yap
+            await setupGameEventListeners();
+            
+            return true;
+        } else {
+            throw new Error("Ethereum provider bulunamadı");
+        }
     } catch (error) {
         console.error("Cüzdan bağlantı hatası:", error);
         showResult('create-result', "Cüzdan bağlantı hatası: " + error.message, false);
@@ -205,6 +257,11 @@ function generateRandomSalt() {
 // Oyuna katılma işlemi
 async function joinGameTransaction(gameId, move, stake) {
     try {
+        // Cüzdan bağlı mı kontrol et
+        if (!signer || !userAddress) {
+            throw new Error("Lütfen önce cüzdanınızı bağlayın");
+        }
+        
         // Oyun bilgilerini kontrol et
         const gameCheck = await checkGameBeforeJoining(gameId);
         if (!gameCheck.valid) {
