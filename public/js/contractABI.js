@@ -99,31 +99,6 @@ const contractABI = [
       },
       {
         "indexed": false,
-        "internalType": "address",
-        "name": "creator",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "enum RockPaperScissorsV2.Move",
-        "name": "move",
-        "type": "uint8"
-      }
-    ],
-    "name": "MoveRevealed",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "gameId",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
         "internalType": "uint256",
         "name": "amount",
         "type": "uint256"
@@ -131,6 +106,32 @@ const contractABI = [
     ],
     "name": "PlatformFeeCollected",
     "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "GAME_CREATION_COOLDOWN",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_GAMES_PER_USER",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
   },
   {
     "inputs": [],
@@ -274,7 +275,7 @@ const contractABI = [
       },
       {
         "internalType": "enum RockPaperScissorsV2.Move",
-        "name": "creatorRevealedMove",
+        "name": "creatorMove",
         "type": "uint8"
       },
       {
@@ -415,45 +416,6 @@ const contractABI = [
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "GAME_CREATION_COOLDOWN",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "MAX_GAMES_PER_USER",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "gameId",
-        "type": "uint256"
-      }
-    ],
-    "name": "emergencyWithdraw",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -653,4 +615,4 @@ const contractABI = [
 ];
 
 // Sepolia testnet üzerindeki kontrat adresi
-const contractAddress = "0x2441E5E65f6E9653e5Ae1bCb6a0648f34D3a26d4"; // Yeni deploy ettiğiniz kontrat adresini buraya yazın
+const contractAddress = "0x846226C8dCA930bf72B2c357c7367d2B745805f0";

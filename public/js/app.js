@@ -622,26 +622,12 @@ async function joinGameTransaction(gameId, move, stake) {
             gasPrice: ethers.utils.formatUnits(feeData.gasPrice, "gwei")
         });
 
-        // Legacy transaction parametreleri - yüksek gas fiyatı
+        // Basit transaction parametreleri
         const txParams = {
             value: stakeWei,
-            gasLimit: 300000, // Gas limitini yükselttik
-            gasPrice: feeData.gasPrice.mul(2), // Gas fiyatını 2 katına çıkardık
-            type: 0 // Legacy transaction
+            gasLimit: 500000  // Çok yüksek gas limiti
         };
 
-        console.log("Transaction parametreleri:", {
-            gameId: gameIdNum,
-            move: moveValue.toString(),
-            value: ethers.utils.formatEther(stakeWei),
-            gasLimit: txParams.gasLimit,
-            gasPrice: ethers.utils.formatUnits(txParams.gasPrice, "gwei") + " gwei",
-            estimatedCost: ethers.utils.formatEther(
-                txParams.gasPrice.mul(txParams.gasLimit).add(stakeWei)
-            ) + " ETH"
-        });
-
-        // Transaction'ı gönder
         console.log("Transaction gönderiliyor...");
         const tx = await contract.joinGame(gameIdNum, moveValue, txParams);
         console.log("Transaction gönderildi:", tx.hash);
@@ -697,4 +683,53 @@ async function joinGameTransaction(gameId, move, stake) {
         
         throw new Error(errorMessage);
     }
-} 
+}
+
+// Yeni oyun oluştur ve katıl
+async function createAndJoinGame() {
+    try {
+        // Yeni oyun oluştur
+        const createTx = await contract.createGame(1, {
+            value: ethers.utils.parseEther("0.001"),
+            gasLimit: 300000
+        });
+        const createReceipt = await createTx.wait();
+        console.log("Oyun oluşturuldu:", createReceipt);
+        
+        // Oyun ID'sini al
+        const gameId = await contract.gameCount() - 1;
+        console.log("Oluşturulan oyun ID:", gameId.toString());
+        
+        // Oyuna katıl
+        const joinTx = await contract.joinGame(gameId, 2, {
+            value: ethers.utils.parseEther("0.001"),
+            gasLimit: 300000
+        });
+        const joinReceipt = await joinTx.wait();
+        console.log("Oyuna katılındı:", joinReceipt);
+        
+        return joinReceipt;
+    } catch (error) {
+        console.error("Hata:", error);
+        throw error;
+    }
+}
+
+// Test butonu için event listener
+document.getElementById('create-and-join').addEventListener('click', async () => {
+    const resultDiv = document.getElementById('test-result');
+    resultDiv.innerHTML = "Test işlemi başlatılıyor...";
+    resultDiv.className = "result pending";
+    
+    try {
+        const receipt = await createAndJoinGame();
+        resultDiv.innerHTML = "Test başarılı! Transaction: " + receipt.transactionHash;
+        resultDiv.className = "result success";
+        
+        // Oyun listesini güncelle
+        await loadGames();
+    } catch (error) {
+        resultDiv.innerHTML = "Test başarısız: " + error.message;
+        resultDiv.className = "result error";
+    }
+}); 

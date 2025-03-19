@@ -170,8 +170,8 @@ contract RockPaperScissorsV2 {
     }
     
     function joinGame(uint256 gameId, Move move) external payable nonReentrant {
-        require(gasleft() >= 100000, "Insufficient gas"); // Minimum gas limitini düşür
-        require(gameId < gameCount && gameId >= gameCount - 100, "Invalid game ID");
+        require(gasleft() >= 100000, "Insufficient gas");
+        require(gameId < gameCount, "Invalid game ID");
         
         Game storage game = games[gameId];
         require(gameExists[gameId], "Game does not exist");
