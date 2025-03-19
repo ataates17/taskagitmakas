@@ -95,8 +95,11 @@ function setupModalEventListeners() {
             // Stake miktarını al (örnek olarak sabit)
             const stake = "0.01";
             
-            // Secret oluştur (örnek olarak sabit)
+            // Secret oluştur
             const secret = "mySecret";
+            
+            // moveAndSecret string'ini oluştur
+            const moveAndSecret = `${moveString}:${secret}`;
             
             // Commit hash'i oluştur
             const commit = ethers.utils.keccak256(
@@ -115,7 +118,7 @@ function setupModalEventListeners() {
             `;
             document.getElementById('create-result').className = "result pending";
             
-            const receipt = await createGameTransaction(commit);
+            const receipt = await createGameTransaction(commit, moveAndSecret);
             
             // Başarılı sonucu göster
             document.getElementById('create-result').innerHTML = `
@@ -263,58 +266,58 @@ function openJoinGameModal(gameId, stake) {
 // Cüzdana bağlan
 async function connectWallet() {
     try {
-        await provider.send("eth_requestAccounts", []);
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        provider = new ethers.providers.Web3Provider(window.ethereum);
         signer = provider.getSigner();
         userAddress = await signer.getAddress();
         
-        // Bağlı cüzdan bilgisini göster
-        const walletInfo = document.getElementById('wallet-info');
-        walletInfo.textContent = shortenAddress(userAddress);
-        walletInfo.style.display = 'block';
-        
-        // Bağlantı butonunu gizle
-        document.getElementById('connect-wallet').style.display = 'none';
-        
-        // Kontratı signer ile bağla
+        // Kontrat bağlantısı
         contract = new ethers.Contract(contractAddress, contractABI, signer);
         
+        // Kullanıcı adresini göster
+        document.getElementById('wallet-address').textContent = shortenAddress(userAddress);
+        document.getElementById('wallet-status').className = 'connected';
+        
         // Oyunları yükle
-        loadGames();
+        await loadGames();
         
         return true;
     } catch (error) {
-        console.error("Cüzdan bağlantı hatası:", error);
-        alert("Cüzdan bağlantı hatası: " + error.message);
+        console.error("Bağlantı hatası:", error);
+        alert("Cüzdan bağlantısı kurulamadı: " + error.message);
         return false;
     }
 }
 
 // Oyun oluşturma transaction'ı
-async function createGameTransaction(commit) {
+async function createGameTransaction(commit, moveAndSecret) {
     try {
-        // Stake değeri
-        const stake = ethers.utils.parseEther("0.01");
-        
-        // İşlemi gönder
-        const tx = await contract.createGame(commit, {
+        if (!contract) {
+            throw new Error("Kontrat bağlantısı yok");
+        }
+
+        const stakeInEther = "0.01"; // Sabit stake değeri (örnek)
+        const stake = ethers.utils.parseEther(stakeInEther);
+
+        const tx = await contract.createGame(commit, moveAndSecret, {
             value: stake,
             gasLimit: 300000
         });
-        
+
         console.log("Transaction gönderildi:", tx.hash);
-        
+
         const receipt = await tx.wait();
         console.log("Transaction onaylandı:", receipt);
-        
+
         if (receipt.status === 0) {
             throw new Error("Transaction başarısız oldu");
         }
-        
+
         return receipt;
-        
+
     } catch (error) {
-        console.error("Transaction detaylı hata:", error);
-        throw new Error("Oyun oluşturulurken bir hata oluştu: " + error.message);
+        console.error("Create Transaction detaylı hata:", error);
+        throw new Error("Oyun oluştururken bir hata oluştu: " + error.message);
     }
 }
 
@@ -467,9 +470,9 @@ async function loadGames() {
                 const gameItem = document.createElement('div');
                 gameItem.className = 'game-item';
                 
-                // Oyun durumunu belirle
+                // Oyun durumunu belirle - yeni kontrat yalnızca Created ve Finished durumlarına sahip
                 let status;
-                if (game.finished) {
+                if (game.state == 1) { // Finished
                     if (game.winner === ethers.constants.AddressZero) {
                         status = "Berabere";
                     } else if (game.winner === game.creator) {
@@ -477,10 +480,8 @@ async function loadGames() {
                     } else {
                         status = "Rakip Kazandı";
                     }
-                } else if (game.challenger === ethers.constants.AddressZero) {
+                } else { // Created
                     status = "Açık (Katılım Bekliyor)";
-                } else {
-                    status = "Tamamlandı";
                 }
                 
                 // Kullanıcının oyunu mu?
@@ -505,7 +506,7 @@ async function loadGames() {
                 const gameActions = gameItem.querySelector('.game-actions');
                 
                 // Açık oyun ve kullanıcı oyunun yaratıcısı değilse "Katıl" butonu ekle
-                if (!game.finished && 
+                if (game.state == 0 && // Created 
                     game.challenger === ethers.constants.AddressZero && 
                     game.creator.toLowerCase() !== userAddress.toLowerCase()) {
                     const joinButton = document.createElement('button');
@@ -519,7 +520,7 @@ async function loadGames() {
                 
                 // Kullanıcıya ait oyun ise özel işlem butonları ekle
                 if (isUserGame) {
-                    if (game.finished) {
+                    if (game.state == 1) { // Finished
                         const winnerText = document.createElement('div');
                         winnerText.className = 'winner-text';
                         if (game.winner === ethers.constants.AddressZero) {
@@ -558,8 +559,8 @@ async function joinGameTransaction(gameId, move) {
     try {
         // Oyun bilgilerini al
         const game = await contract.games(gameId);
-        if (game.finished) {
-            throw new Error("Bu oyun zaten tamamlandı");
+        if (game.state != 0) { // 0 = Created state
+            throw new Error("Bu oyun zaten tamamlandı veya geçerli değil");
         }
         
         // Stake miktarını kontrol et
@@ -575,13 +576,10 @@ async function joinGameTransaction(gameId, move) {
             throw new Error("Geçersiz hamle! 1-Taş, 2-Kağıt, 3-Makas olmalıdır.");
         }
         
-        // Secret değeri - ÖNEMLİ: Oyunu oluşturan kişinin kullandığı ile aynı olmalı!
-        const secret = "mySecret";
+        console.log(`Oyun ${gameId}'ye katılım: Hamle=${move}`);
         
-        console.log(`Oyun ${gameId}'ye katılım: Hamle=${move}, Secret="${secret}"`);
-        
-        // İşlemi gönder
-        const tx = await contract.joinGame(gameId, move, secret, {
+        // İşlemi gönder - yeni kontratta secret parametresi yok
+        const tx = await contract.joinGame(gameId, move, {
             value: stake,
             gasLimit: 300000
         });

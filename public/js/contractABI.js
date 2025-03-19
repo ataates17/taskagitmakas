@@ -36,43 +36,24 @@ const contractABI = [
       },
       {
         "indexed": false,
+        "internalType": "enum RockPaperScissorsV4.Move",
+        "name": "creatorMove",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "enum RockPaperScissorsV4.Move",
+        "name": "challengerMove",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
         "internalType": "address",
         "name": "winner",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "prize",
-        "type": "uint256"
       }
     ],
     "name": "GameFinished",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "gameId",
-        "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "challenger",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "enum RockPaperScissorsV3.Move",
-        "name": "move",
-        "type": "uint8"
-      }
-    ],
-    "name": "GameJoined",
     "type": "event"
   },
   {
@@ -81,6 +62,11 @@ const contractABI = [
         "internalType": "bytes32",
         "name": "commit",
         "type": "bytes32"
+      },
+      {
+        "internalType": "string",
+        "name": "moveAndSecret",
+        "type": "string"
       }
     ],
     "name": "createGame",
@@ -127,12 +113,12 @@ const contractABI = [
         "type": "bytes32"
       },
       {
-        "internalType": "enum RockPaperScissorsV3.Move",
+        "internalType": "enum RockPaperScissorsV4.Move",
         "name": "creatorMove",
         "type": "uint8"
       },
       {
-        "internalType": "enum RockPaperScissorsV3.Move",
+        "internalType": "enum RockPaperScissorsV4.Move",
         "name": "challengerMove",
         "type": "uint8"
       },
@@ -142,14 +128,19 @@ const contractABI = [
         "type": "uint256"
       },
       {
-        "internalType": "bool",
-        "name": "finished",
-        "type": "bool"
+        "internalType": "enum RockPaperScissorsV4.GameState",
+        "name": "state",
+        "type": "uint8"
       },
       {
         "internalType": "address",
         "name": "winner",
         "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "moveAndSecret",
+        "type": "string"
       }
     ],
     "stateMutability": "view",
@@ -163,14 +154,9 @@ const contractABI = [
         "type": "uint256"
       },
       {
-        "internalType": "enum RockPaperScissorsV3.Move",
+        "internalType": "enum RockPaperScissorsV4.Move",
         "name": "move",
         "type": "uint8"
-      },
-      {
-        "internalType": "string",
-        "name": "secret",
-        "type": "string"
       }
     ],
     "name": "joinGame",
@@ -181,4 +167,4 @@ const contractABI = [
 ];
 
 // Sepolia testnet üzerindeki kontrat adresi
-const contractAddress = "0x6B4d5C70b79916192ab7d16AcBa2D5b4A6c5Af8d"; // Yeni kontrat adresinizi buraya ekleyin
+const contractAddress = "0xB21FEcD272573Bc2cE67744f1a00258cb464E12e"; // Kontrat adresinizi buraya yazın
