@@ -274,9 +274,18 @@ async function connectWallet() {
         // Kontrat bağlantısı
         contract = new ethers.Contract(contractAddress, contractABI, signer);
         
-        // Kullanıcı adresini göster
-        document.getElementById('wallet-address').textContent = shortenAddress(userAddress);
-        document.getElementById('wallet-status').className = 'connected';
+        // Kullanıcı adresini göster - HTML yapınıza göre güncellendi
+        const walletInfo = document.getElementById('wallet-info');
+        if (walletInfo) {
+            walletInfo.textContent = shortenAddress(userAddress);
+            walletInfo.style.display = 'block';
+        }
+        
+        // Connect butonunu gizle
+        const connectButton = document.getElementById('connect-wallet');
+        if (connectButton) {
+            connectButton.style.display = 'none';
+        }
         
         // Oyunları yükle
         await loadGames();
