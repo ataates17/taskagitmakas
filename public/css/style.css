@@ -1106,7 +1106,7 @@ footer {
     border: 1px solid #f5c6cb;
 }
 
-/* Oyun kartları için stil */
+/* Oyun Kartları */
 .games-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -1115,153 +1115,150 @@ footer {
 }
 
 .game-card {
-    background-color: #fff;
-    border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    padding: 15px;
-    transition: transform 0.2s, box-shadow 0.2s;
-    position: relative;
+    background-color: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
     overflow: hidden;
+    transition: var(--transition);
+    display: block;
+    visibility: visible;
 }
 
 .game-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 }
 
 .game-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #eee;
+    padding: 15px;
+    background-color: var(--light-color);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .game-id {
     font-weight: 600;
-    color: #333;
+    color: var(--dark-color);
 }
 
 .game-stake {
     font-weight: 600;
-    color: #4CAF50;
+    color: var(--primary-color);
 }
 
 .game-info {
-    margin-bottom: 15px;
+    padding: 15px;
 }
 
 .game-creator, .game-challenger {
+    margin-bottom: 10px;
     display: flex;
     justify-content: space-between;
-    margin-bottom: 8px;
 }
 
 .label {
-    color: #666;
-    font-size: 0.9rem;
+    color: var(--gray-color);
+    font-size: 14px;
 }
 
 .value {
     font-weight: 500;
-    color: #333;
 }
 
 .game-status {
-    margin-top: 10px;
+    margin-top: 15px;
     text-align: center;
 }
 
 .status-badge {
     display: inline-block;
-    padding: 4px 10px;
+    padding: 5px 10px;
     border-radius: 20px;
-    font-size: 0.8rem;
+    font-size: 12px;
     font-weight: 500;
 }
 
-.status-open {
-    background-color: #E3F2FD;
-    color: #1976D2;
+.status-open .status-badge {
+    background-color: rgba(46, 204, 113, 0.2);
+    color: #27ae60;
 }
 
-.status-pending {
-    background-color: #FFF8E1;
-    color: #FFA000;
+.status-pending .status-badge {
+    background-color: rgba(243, 156, 18, 0.2);
+    color: #f39c12;
 }
 
-.status-active {
-    background-color: #E8F5E9;
-    color: #388E3C;
+.status-active .status-badge {
+    background-color: rgba(52, 152, 219, 0.2);
+    color: #2980b9;
 }
 
-.status-joined {
-    background-color: #E0F7FA;
-    color: #00ACC1;
+.status-joined .status-badge {
+    background-color: rgba(155, 89, 182, 0.2);
+    color: #8e44ad;
 }
 
-.status-finished {
-    background-color: #F3E5F5;
-    color: #7B1FA2;
+.status-won .status-badge {
+    background-color: rgba(46, 204, 113, 0.2);
+    color: #27ae60;
 }
 
-.status-won {
-    background-color: #E8F5E9;
-    color: #388E3C;
+.status-lost .status-badge {
+    background-color: rgba(231, 76, 60, 0.2);
+    color: #c0392b;
 }
 
-.status-lost {
-    background-color: #FFEBEE;
-    color: #D32F2F;
-}
-
-.status-tie {
-    background-color: #F5F5F5;
-    color: #616161;
+.status-tie .status-badge {
+    background-color: rgba(149, 165, 166, 0.2);
+    color: #7f8c8d;
 }
 
 .game-actions {
-    margin-top: 15px;
+    padding: 15px;
+    border-top: 1px solid var(--border-color);
     display: flex;
     justify-content: center;
 }
 
 .waiting-reveal {
-    color: #FFA000;
+    color: var(--gray-color);
     font-style: italic;
     text-align: center;
 }
 
 .game-result {
     width: 100%;
+    text-align: center;
 }
 
-.game-result .moves {
+.moves {
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 10px;
 }
 
-.game-result .move {
+.move {
     font-weight: 600;
-    color: #333;
+    color: var(--dark-color);
 }
 
-.game-result .vs {
-    color: #999;
-    font-size: 0.8rem;
+.vs {
+    color: var(--gray-color);
+    font-size: 12px;
 }
 
 /* Tab sistemi */
 .games-tabs {
+    width: 100%;
     margin-top: 20px;
 }
 
 .tab-buttons {
     display: flex;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--border-color);
     margin-bottom: 20px;
 }
 
@@ -1295,6 +1292,7 @@ footer {
 
 .tab-content {
     position: relative;
+    display: block;
 }
 
 .tab-pane {

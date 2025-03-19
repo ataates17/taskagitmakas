@@ -391,56 +391,18 @@ async function loadFirebaseGames() {
             return;
         }
         
-        // Oyunları kategorilere ayır
-        const openGames = games.filter(g => g.state === 'ACTIVE' && g.creatorAddress.toLowerCase() !== userAddress.toLowerCase());
-        const myGames = games.filter(g => 
-            (g.creatorAddress.toLowerCase() === userAddress.toLowerCase() || 
-             g.challengerAddress?.toLowerCase() === userAddress.toLowerCase()) && 
-            g.state !== 'FINISHED'
-        );
-        const finishedGames = games.filter(g => 
-            g.state === 'FINISHED' && 
-            (g.creatorAddress.toLowerCase() === userAddress.toLowerCase() || 
-             g.challengerAddress?.toLowerCase() === userAddress.toLowerCase())
-        );
+        // Basitleştirilmiş yaklaşım - Tab sistemi olmadan
+        const openGames = games.filter(g => g.state === 'ACTIVE');
         
-        let html = `
-            <div class="games-tabs">
-                <div class="tab-buttons">
-                    <button class="tab-button active" data-tab="open-games">Açık Oyunlar (${openGames.length})</button>
-                    <button class="tab-button" data-tab="my-games">Oyunlarım (${myGames.length})</button>
-                    <button class="tab-button" data-tab="finished-games">Tamamlanan (${finishedGames.length})</button>
-                </div>
-                
-                <div class="tab-content">
-                    <div class="tab-pane active" id="open-games">
-                        ${renderGamesList(openGames, 'open')}
-                    </div>
-                    <div class="tab-pane" id="my-games">
-                        ${renderGamesList(myGames, 'my')}
-                    </div>
-                    <div class="tab-pane" id="finished-games">
-                        ${renderGamesList(finishedGames, 'finished')}
-                    </div>
-                </div>
-            </div>
-        `;
+        if (openGames.length === 0) {
+            gamesList.innerHTML = '<p>Aktif oyun bulunamadı. Yeni bir oyun oluşturabilirsiniz.</p>';
+            return;
+        }
+        
+        let html = '<h3>Açık Oyunlar</h3>';
+        html += renderGamesList(openGames, 'open');
         
         gamesList.innerHTML = html;
-        
-        // Tab butonlarına olay dinleyicisi ekle
-        document.querySelectorAll('.tab-button').forEach(button => {
-            button.addEventListener('click', () => {
-                // Aktif tab'ı değiştir
-                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-                button.classList.add('active');
-                
-                // İlgili içeriği göster
-                const tabId = button.getAttribute('data-tab');
-                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-                document.getElementById(tabId).classList.add('active');
-            });
-        });
         
         // Oyuna katıl butonlarına olay dinleyicisi ekle
         document.querySelectorAll('.join-btn').forEach(button => {
@@ -451,18 +413,10 @@ async function loadFirebaseGames() {
             });
         });
         
-        // Reveal butonlarına olay dinleyicisi ekle
-        document.querySelectorAll('.reveal-btn').forEach(button => {
-            button.addEventListener('click', async () => {
-                const gameId = button.getAttribute('data-id');
-                await revealMove(gameId);
-            });
-        });
+        console.log("Basitleştirilmiş HTML eklendi");
         
         // Debug için oyunları konsola yazdır
         console.log("Açık oyunlar:", openGames);
-        console.log("Oyunlarım:", myGames);
-        console.log("Tamamlanan oyunlar:", finishedGames);
     } catch (error) {
         console.error("Oyunları yükleme hatası:", error);
         document.getElementById('games-list').innerHTML = `
@@ -647,6 +601,9 @@ async function loadGames() {
         
         // Debug için
         console.log("Oyunlar yüklendi");
+        
+        // Oyun listesi elementini kontrol et
+        setTimeout(checkGamesList, 500);
     } catch (error) {
         console.error("Oyun yükleme hatası:", error);
         document.getElementById('games-list').innerHTML = `
@@ -1449,4 +1406,64 @@ function openJoinGameModal(gameId, stake) {
     
     // Modal kapatma butonuna olay dinleyicisi ekle
     document.querySelector('.close-join-modal').addEventListener('click', closeModal);
+}
+
+// DOM yapısını kontrol et
+function checkDOMStructure() {
+    console.log("DOM Yapısı Kontrolü:");
+    
+    // games-list elementini kontrol et
+    const gamesList = document.getElementById('games-list');
+    console.log("games-list element:", gamesList);
+    
+    if (gamesList) {
+        console.log("games-list içeriği:", gamesList.innerHTML);
+        
+        // Tab'ları kontrol et
+        const tabs = gamesList.querySelector('.games-tabs');
+        console.log("games-tabs element:", tabs);
+        
+        if (tabs) {
+            // Tab butonlarını kontrol et
+            const tabButtons = tabs.querySelectorAll('.tab-button');
+            console.log("tab-button elements:", tabButtons.length);
+            
+            // Tab içeriklerini kontrol et
+            const tabPanes = tabs.querySelectorAll('.tab-pane');
+            console.log("tab-pane elements:", tabPanes.length);
+            
+            // Aktif tab'ı kontrol et
+            const activeTab = tabs.querySelector('.tab-pane.active');
+            console.log("active tab-pane:", activeTab);
+            
+            if (activeTab) {
+                console.log("active tab-pane içeriği:", activeTab.innerHTML);
+            }
+        }
+    }
+}
+
+// Oyun listesi elementini kontrol et
+function checkGamesList() {
+    const gamesList = document.getElementById('games-list');
+    console.log("games-list element:", gamesList);
+    
+    if (!gamesList) {
+        console.error("games-list elementi bulunamadı!");
+        return;
+    }
+    
+    // Element görünür mü?
+    const style = window.getComputedStyle(gamesList);
+    console.log("games-list display:", style.display);
+    console.log("games-list visibility:", style.visibility);
+    console.log("games-list height:", style.height);
+    console.log("games-list width:", style.width);
+    
+    // Element içeriği
+    console.log("games-list innerHTML:", gamesList.innerHTML);
+    
+    // Element pozisyonu
+    const rect = gamesList.getBoundingClientRect();
+    console.log("games-list position:", rect);
 } 
