@@ -1171,9 +1171,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Otomatik reveal seçeneği değiştiğinde
-    document.getElementById('auto-reveal').addEventListener('change', function() {
-        autoRevealEnabled = this.checked;
-    });
+    const autoRevealCheckbox = document.getElementById('auto-reveal');
+    if (autoRevealCheckbox) {
+        autoRevealCheckbox.addEventListener('change', function() {
+            autoRevealEnabled = this.checked;
+        });
+    }
     
     // Modal içinde oyun oluştur butonuna tıklandığında
     document.getElementById('modal-create-game').addEventListener('click', async () => {
