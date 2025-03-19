@@ -305,8 +305,13 @@ async function createGameTransaction(commit, moveAndSecret) {
             throw new Error("Kontrat bağlantısı yok");
         }
 
-        const stakeInEther = "0.01"; // Sabit stake değeri (örnek)
+        const stakeInEther = "0.01"; // Sabit stake değeri
         const stake = ethers.utils.parseEther(stakeInEther);
+
+        console.log("Kontrata gönderilen değerler:");
+        console.log("- commit:", commit);
+        console.log("- moveAndSecret:", moveAndSecret);
+        console.log("- stake:", stake.toString());
 
         const tx = await contract.createGame(commit, moveAndSecret, {
             value: stake,
@@ -320,6 +325,24 @@ async function createGameTransaction(commit, moveAndSecret) {
 
         if (receipt.status === 0) {
             throw new Error("Transaction başarısız oldu");
+        }
+
+        // Oluşturulan oyunu kontrol et
+        const gameId = await contract.gameCount() - 1;
+        const game = await contract.games(gameId);
+        
+        console.log("Oluşturulan oyun kontrol:", {
+            gameId: gameId.toString(),
+            creatorCommit: game.creatorCommit,
+            moveAndSecret: game.moveAndSecret
+        });
+        
+        // Commit hash'lerini kontrol et
+        const storedCommit = game.creatorCommit;
+        if (storedCommit.toLowerCase() !== commit.toLowerCase()) {
+            console.warn("DİKKAT: Oluşturulan commit hash ile kontrata kaydedilen hash farklı!");
+            console.warn("JavaScript commit:", commit);
+            console.warn("Kontrat commit:", storedCommit);
         }
 
         return receipt;
@@ -583,6 +606,32 @@ async function joinGameTransaction(gameId, move) {
         // Move değerini kontrol et (1, 2, 3 aralığında olmalı)
         if (move < 1 || move > 3) {
             throw new Error("Geçersiz hamle! 1-Taş, 2-Kağıt, 3-Makas olmalıdır.");
+        }
+        
+        // Oyun verilerini kontrol et
+        console.log(`Oyun ${gameId} detayları:`, {
+            creator: game.creator,
+            creatorCommit: game.creatorCommit,
+            moveAndSecret: game.moveAndSecret,
+            state: game.state.toString()
+        });
+
+        // Farklı bir hash hesaplama yöntemi dene
+        const moveAndSecretParts = game.moveAndSecret.split(':');
+        if (moveAndSecretParts.length !== 2) {
+            console.error("moveAndSecret format hatası:", game.moveAndSecret);
+        } else {
+            const moveStr = moveAndSecretParts[0];
+            const secret = moveAndSecretParts[1];
+            
+            // Kontratın yaptığı gibi hash hesapla
+            const testHash = ethers.utils.solidityKeccak256(
+                ["string", "string"],
+                [moveStr, secret]
+            );
+            console.log("Test hash (solidityKeccak256):", testHash);
+            console.log("Kontrat commit:", game.creatorCommit);
+            console.log("Hash'ler uyumlu mu:", testHash.toLowerCase() === game.creatorCommit.toLowerCase());
         }
         
         console.log(`Oyun ${gameId}'ye katılım: Hamle=${move}`);
