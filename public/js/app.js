@@ -202,7 +202,7 @@ async function handleJoinGame() {
         `;
         resultDiv.className = "result pending";
 
-        const receipt = await joinGameTransaction(gameId, move, stake);
+        const receipt = await joinGameTransaction(gameId, move);
         
         resultDiv.innerHTML = `
             <div class="success">
@@ -678,7 +678,7 @@ async function validateTransaction(value) {
 }
 
 // Oyuna katılma işlemi
-async function joinGameTransaction(gameId, move, stake) {
+async function joinGameTransaction(gameId, move) {
     try {
         // Oyun durumunu kontrol et
         const gameState = await contract.getGameState(gameId);
@@ -686,9 +686,17 @@ async function joinGameTransaction(gameId, move, stake) {
             throw new Error("Bu oyun artık geçerli değil");
         }
 
-        // Oyuna katılma işlemleri burada devam eder...
-        // Örneğin, kontrat ile etkileşim kurarak oyuna katılma işlemi yapılabilir.
+        // İşlemi gönder
+        const tx = await contract.joinGame(gameId, move, {
+            value: ethers.utils.parseEther("0.001"), // Örnek stake değeri
+            gasLimit: 300000
+        });
 
+        // İşlemi bekle
+        const receipt = await tx.wait();
+        console.log("Transaction onaylandı:", receipt);
+
+        return receipt;
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
         // Hata mesajını kullanıcıya göster
