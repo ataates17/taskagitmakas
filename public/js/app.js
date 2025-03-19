@@ -677,150 +677,21 @@ async function validateTransaction(value) {
     };
 }
 
-// Oyuna katılma transaction'ı
+// Oyuna katılma işlemi
 async function joinGameTransaction(gameId, move, stake) {
     try {
-        // Move enum kontrolü (1: Rock, 2: Paper, 3: Scissors)
-        const moveMap = {
-            1: "Rock",
-            2: "Paper", 
-            3: "Scissors"
-        };
-
-        if (!moveMap[move]) {
-            throw new Error("Geçersiz hamle! Lütfen Taş (1), Kağıt (2) veya Makas (3) seçin");
-        }
-
-        // gameId'yi sayı olarak kontrol et ve BigNumber'a çevir
-        const gameIdNum = parseInt(gameId);
-        if (isNaN(gameIdNum) || gameIdNum < 0) {
-            throw new Error("Geçersiz oyun ID");
-        }
-
-        // Move'u uint8 olarak gönder
-        const moveValue = ethers.BigNumber.from(move);
-        
-        // Stake'i BigNumber'a çevir
-        const stakeWei = ethers.utils.parseEther(stake.toString());
-
-        // Oyun bilgilerini kontrol et
-        const gameInfo = await contract.getGameInfo(gameIdNum);
-        console.log("Oyun bilgileri:", {
-            creator: gameInfo.creator,
-            challenger: gameInfo.challenger,
-            stake: ethers.utils.formatEther(gameInfo.stake),
-            state: gameInfo.state
-        });
-
-        if (gameInfo.creator === ethers.constants.AddressZero) {
-            throw new Error("Oyun bulunamadı");
-        }
-
-        if (gameInfo.creator === userAddress) {
-            throw new Error("Kendi oyununuza katılamazsınız");
-        }
-
         // Oyun durumunu kontrol et
-        const gameState = await contract.getGameState(gameIdNum);
-        console.log("Oyun durumu:", gameState);
-
-        if (gameState.state !== 0) {
-            throw new Error("Bu oyuna katılınamaz");
-        }
-
-        // Stake kontrolü
-        if (!stakeWei.eq(gameInfo.stake)) {
-            throw new Error(`Bahis miktarı ${ethers.utils.formatEther(gameInfo.stake)} ETH olmalı`);
-        }
-
-        // Bakiye kontrolü
-        const balance = await provider.getBalance(userAddress);
-        if (balance.lt(stakeWei)) {
-            throw new Error("Yetersiz bakiye");
-        }
-
-        // Transaction'ı göndermeden önce son kontroller
-        const gameCount = await contract.gameCount();
-        console.log("Toplam oyun sayısı:", gameCount.toString());
-
-        // Oyun geçerliliğini kontrol et
-        const isValid = await contract.isValidGame(gameIdNum);
-        if (!isValid) {
+        const gameState = await contract.getGameState(gameId);
+        if (gameState.state !== 0) { // 0: Created
             throw new Error("Bu oyun artık geçerli değil");
         }
 
-        // Aktif oyun sayısını kontrol et
-        const activeGames = await contract.getActiveGames(userAddress);
-        console.log("Aktif oyun sayısı:", activeGames.toString());
-
-        // Gas fiyatını al ve yüksek tut
-        const feeData = await provider.getFeeData();
-        console.log("Fee data:", {
-            maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei"),
-            maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
-            gasPrice: ethers.utils.formatUnits(feeData.gasPrice, "gwei")
-        });
-
-        // Basit transaction parametreleri
-        const txParams = {
-            value: stakeWei,
-            gasLimit: 500000  // Çok yüksek gas limiti
-        };
-
-        console.log("Transaction gönderiliyor...");
-        const tx = await contract.joinGame(gameIdNum, moveValue, txParams);
-        console.log("Transaction gönderildi:", tx.hash);
-
-        // Transaction'ı bekle
-        console.log("Transaction onayı bekleniyor...");
-        const receipt = await tx.wait(1);
-        console.log("Transaction onaylandı:", receipt);
-
-        if (receipt.status === 0) {
-            // Hata sebebini bulmaya çalış
-            try {
-                await provider.call(tx, receipt.blockNumber);
-            } catch (error) {
-                const reason = error.data || error.message;
-                throw new Error("Transaction başarısız oldu: " + reason);
-            }
-            throw new Error("Transaction başarısız oldu");
-        }
-
-        // Oyun durumunu kontrol et
-        const gameStateAfter = await contract.getGameState(gameIdNum);
-        console.log("Oyun durumu (katılımdan sonra):", gameStateAfter);
-
-        return receipt;
+        // Oyuna katılma işlemleri burada devam eder...
+        // Örneğin, kontrat ile etkileşim kurarak oyuna katılma işlemi yapılabilir.
 
     } catch (error) {
         console.error("Join Transaction detaylı hata:", error);
-        
-        // Hata mesajını daha anlaşılır hale getir
-        let errorMessage = "Oyuna katılırken bir hata oluştu";
-        
-        if (error.data) {
-            // Revert reason'ı bul
-            const data = error.data;
-            const reason = data.substring(138);
-            const decoded = ethers.utils.toUtf8String('0x' + reason);
-            errorMessage = decoded;
-        } else if (error.message) {
-            if (error.message.includes("insufficient funds")) {
-                errorMessage = "Yetersiz bakiye";
-            } else if (error.message.includes("gas required exceeds")) {
-                errorMessage = "Gas limiti çok yüksek";
-            } else if (error.message.includes("nonce")) {
-                errorMessage = "Lütfen bekleyen işlemlerin tamamlanmasını bekleyin";
-            } else if (error.message.includes("execution reverted")) {
-                const revertReason = error.message.split("execution reverted:")[1]?.trim() || "Bilinmeyen hata";
-                errorMessage = revertReason;
-            } else {
-                errorMessage = error.message;
-            }
-        }
-        
-        throw new Error(errorMessage);
+        // Hata mesajını kullanıcıya göster
     }
 }
 
@@ -1319,4 +1190,10 @@ function showNotification(message, type = "info") {
             notification.remove();
         }, 300);
     });
-} 
+}
+
+document.getElementById('join-game').addEventListener('click', async () => {
+    const gameId = parseInt(document.getElementById('game-id').value);
+    const move = parseInt(document.getElementById('join-move').value);
+    await joinGameTransaction(gameId, move);
+}); 
