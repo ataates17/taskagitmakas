@@ -4,6 +4,7 @@ let signer;
 let contract;
 let userAddress;
 let gameCreationData = {}; // Oyun oluşturma verilerini saklamak için
+let firebaseUser = null; // Firebase kullanıcısı
 
 // Modal işlemleri
 let selectedMove = null;
@@ -31,6 +32,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Oyun ID'si değiştiğinde
     document.getElementById('game-id').addEventListener('change', loadGameDetails);
+    
+    // Firebase Auth durumunu dinle
+    firebase.auth().onAuthStateChanged(async (user) => {
+        if (user) {
+            firebaseUser = user;
+            console.log("Firebase kullanıcısı:", user.uid);
+            
+            // Kullanıcı profilini yükle
+            const profile = await getUserProfile();
+            if (profile) {
+                userAddress = profile.address;
+                
+                // Ethereum provider'ı başlat
+                await initEthereumProvider();
+                
+                // Oyunları yükle
+                await loadFirebaseGames();
+            }
+        } else {
+            firebaseUser = null;
+            console.log("Firebase kullanıcısı çıkış yaptı");
+        }
+    });
     
     // Ethereum sağlayıcısını kontrol et
     if (window.ethereum) {
@@ -97,6 +121,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+// Ethereum Provider'ı başlat
+async function initEthereumProvider() {
+    if (window.ethereum) {
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        
+        try {
+            // Kullanıcının adresini kontrol et
+            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+            if (accounts.length > 0 && accounts[0].toLowerCase() === userAddress.toLowerCase()) {
+                signer = provider.getSigner();
+                contract = new ethers.Contract(contractAddress, contractABI, signer);
+                
+                // Bağlı cüzdan bilgisini göster
+                const walletInfo = document.getElementById('wallet-info');
+                walletInfo.textContent = shortenAddress(userAddress);
+                walletInfo.style.display = 'block';
+                
+                return true;
+            }
+        } catch (error) {
+            console.error("Ethereum provider başlatma hatası:", error);
+        }
+    }
+    
+    return false;
+}
+
 // Cüzdana bağlan
 async function connectWallet() {
     try {
@@ -110,6 +161,9 @@ async function connectWallet() {
             signer = provider.getSigner();
             userAddress = await signer.getAddress();
             
+            // Firebase ile kimlik doğrulama
+            await signInWithMetaMask(userAddress);
+            
             // Bağlı cüzdan bilgisini göster
             const walletInfo = document.getElementById('wallet-info');
             walletInfo.textContent = shortenAddress(userAddress);
@@ -119,7 +173,7 @@ async function connectWallet() {
             contract = new ethers.Contract(contractAddress, contractABI, signer);
             
             // Oyunları yükle
-            loadGames();
+            loadFirebaseGames();
             
             // Kullanıcı bilgilerini yükle
             loadUserInfo();
@@ -134,6 +188,41 @@ async function connectWallet() {
     } catch (error) {
         console.error("Cüzdan bağlantı hatası:", error);
         showResult('create-result', "Cüzdan bağlantı hatası: " + error.message, false);
+        return false;
+    }
+}
+
+// MetaMask ile Firebase'e giriş yap
+async function signInWithMetaMask(address) {
+    try {
+        // Nonce oluştur
+        const nonce = Math.floor(Math.random() * 1000000).toString();
+        
+        // Kullanıcıya imzalatılacak mesaj
+        const message = `Taş Kağıt Makas oyununa giriş yapmak için bu mesajı imzalayın. Nonce: ${nonce}`;
+        
+        // Mesajı imzalat
+        const signature = await window.ethereum.request({
+            method: 'personal_sign',
+            params: [message, address]
+        });
+        
+        // Backend'e gönder ve özel token al
+        const response = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, signature, message, nonce })
+        });
+        
+        const data = await response.json();
+        
+        // Firebase ile giriş yap
+        await firebase.auth().signInWithCustomToken(data.token);
+        
+        console.log("Firebase'e giriş yapıldı!");
+        return true;
+    } catch (error) {
+        console.error("Firebase giriş hatası:", error);
         return false;
     }
 }
@@ -1296,5 +1385,299 @@ async function checkGameBeforeJoining(gameId) {
     } catch (error) {
         console.error("Oyun kontrol hatası:", error);
         return { valid: false, error: "Oyun kontrol edilemedi: " + error.message };
+    }
+}
+
+// Firebase'den oyunları yükle
+async function loadFirebaseGames() {
+    try {
+        if (!firebaseUser) {
+            console.error("Firebase kullanıcısı bulunamadı");
+            return;
+        }
+        
+        const games = await getFirebaseGames();
+        
+        const gamesList = document.getElementById('games-list');
+        gamesList.innerHTML = '';
+        
+        if (games.length === 0) {
+            gamesList.innerHTML = '<p>Aktif oyun bulunamadı</p>';
+            return;
+        }
+        
+        games.forEach(game => {
+            const gameElement = document.createElement('div');
+            gameElement.className = 'game-item';
+            
+            const stake = ethers.utils.formatEther(game.stake);
+            
+            gameElement.innerHTML = `
+                <div class="game-info">
+                    <div class="game-id">Oyun #${game.blockchain.gameId || 'Bekliyor...'}</div>
+                    <div class="game-creator">${shortenAddress(game.creatorAddress)}</div>
+                    <div class="game-stake">${stake} ETH</div>
+                </div>
+                <button class="btn outline join-btn" data-id="${game.id}" data-stake="${stake}">Katıl</button>
+            `;
+            
+            gamesList.appendChild(gameElement);
+            
+            // Katıl butonuna tıklandığında
+            const joinBtn = gameElement.querySelector('.join-btn');
+            joinBtn.addEventListener('click', () => {
+                openJoinGameModal(game.id, stake);
+            });
+        });
+    } catch (error) {
+        console.error("Oyunları yükleme hatası:", error);
+    }
+}
+
+// Firebase'de oyun oluştur
+async function createFirebaseGame(move, stake) {
+    try {
+        if (!firebaseUser) {
+            throw new Error("Lütfen önce giriş yapın");
+        }
+        
+        // Salt ve commit hash oluştur
+        const salt = generateRandomSalt();
+        const commitHash = ethers.utils.solidityKeccak256(
+            ["uint", "string"],
+            [move, salt]
+        );
+        
+        // Firebase'e oyun bilgilerini kaydet
+        const gameRef = await db.collection('games').add({
+            creator: firebaseUser.uid,
+            creatorAddress: userAddress,
+            stake: ethers.utils.parseEther(stake.toString()).toString(),
+            commitHash: commitHash,
+            salt: salt,
+            move: move,
+            state: 'CREATED',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            blockchain: {
+                confirmed: false,
+                txHash: null
+            }
+        });
+        
+        // Arka planda blockchain işlemini başlat
+        createBlockchainGame(gameRef.id, commitHash, salt, stake);
+        
+        return gameRef.id;
+    } catch (error) {
+        console.error("Oyun oluşturma hatası:", error);
+        throw error;
+    }
+}
+
+// Blockchain'de oyun oluştur (arka planda)
+async function createBlockchainGame(gameId, commitHash, salt, stake) {
+    try {
+        // Blockchain'e oyun oluştur
+        const stakeWei = ethers.utils.parseEther(stake.toString());
+        const tx = await contract.createGame(commitHash, salt, {
+            value: stakeWei,
+            gasLimit: 500000
+        });
+        
+        console.log("Blockchain transaction gönderildi:", tx.hash);
+        
+        // Firebase'i güncelle
+        await db.collection('games').doc(gameId).update({
+            'blockchain.txHash': tx.hash,
+            'blockchain.pending': true
+        });
+        
+        // Transaction'ı bekle
+        const receipt = await tx.wait();
+        
+        // Başarılı ise Firebase'i güncelle
+        if (receipt.status === 1) {
+            // Blockchain'den oyun ID'sini al
+            const blockchainGameId = await getGameIdFromReceipt(receipt);
+            
+            await db.collection('games').doc(gameId).update({
+                'blockchain.confirmed': true,
+                'blockchain.pending': false,
+                'blockchain.gameId': blockchainGameId,
+                'state': 'ACTIVE'
+            });
+            
+            // Oyun listesini güncelle
+            loadFirebaseGames();
+        } else {
+            // Başarısız ise hata durumunu güncelle
+            await db.collection('games').doc(gameId).update({
+                'blockchain.confirmed': false,
+                'blockchain.pending': false,
+                'blockchain.error': 'Transaction failed',
+                'state': 'ERROR'
+            });
+        }
+        
+        return receipt;
+    } catch (error) {
+        console.error("Blockchain oyun oluşturma hatası:", error);
+        
+        // Hata durumunu Firebase'e kaydet
+        await db.collection('games').doc(gameId).update({
+            'blockchain.confirmed': false,
+            'blockchain.pending': false,
+            'blockchain.error': error.message,
+            'state': 'ERROR'
+        });
+        
+        throw error;
+    }
+}
+
+// Transaction receipt'ten oyun ID'sini al
+async function getGameIdFromReceipt(receipt) {
+    try {
+        // GameCreated olayını bul
+        const gameCreatedEvent = receipt.events.find(e => e.event === 'GameCreated');
+        if (gameCreatedEvent) {
+            return gameCreatedEvent.args.gameId.toString();
+        }
+        
+        // Olayı bulamazsak, son oyun ID'sini al
+        const gameCount = await contract.gameCount();
+        return (gameCount - 1).toString();
+    } catch (error) {
+        console.error("Oyun ID'si alma hatası:", error);
+        return "unknown";
+    }
+}
+
+// Firebase'de oyuna katıl
+async function joinFirebaseGame(gameId, move) {
+    try {
+        if (!firebaseUser) {
+            throw new Error("Lütfen önce giriş yapın");
+        }
+        
+        // Oyun bilgilerini al
+        const gameDoc = await db.collection('games').doc(gameId).get();
+        if (!gameDoc.exists) {
+            throw new Error("Oyun bulunamadı");
+        }
+        
+        const gameData = gameDoc.data();
+        
+        // Oyun durumunu kontrol et
+        if (gameData.state !== 'ACTIVE') {
+            throw new Error("Bu oyuna katılınamaz");
+        }
+        
+        if (gameData.creator === firebaseUser.uid) {
+            throw new Error("Kendi oyununuza katılamazsınız");
+        }
+        
+        // Firebase'de oyunu güncelle
+        await db.collection('games').doc(gameId).update({
+            challenger: firebaseUser.uid,
+            challengerAddress: userAddress,
+            challengerMove: move,
+            state: 'JOINED',
+            joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        // Arka planda blockchain işlemini başlat
+        joinBlockchainGame(gameId, gameData.blockchain.gameId, move, gameData.stake);
+        
+        return true;
+    } catch (error) {
+        console.error("Oyuna katılma hatası:", error);
+        throw error;
+    }
+}
+
+// Blockchain'de oyuna katıl (arka planda)
+async function joinBlockchainGame(firebaseGameId, blockchainGameId, move, stake) {
+    try {
+        // Blockchain'e oyuna katıl
+        const stakeWei = ethers.utils.parseEther(stake.toString());
+        const tx = await contract.joinGame(
+            ethers.BigNumber.from(blockchainGameId), 
+            ethers.BigNumber.from(move), 
+            {
+                value: stakeWei,
+                gasLimit: 500000
+            }
+        );
+        
+        console.log("Blockchain join transaction gönderildi:", tx.hash);
+        
+        // Firebase'i güncelle
+        await db.collection('games').doc(firebaseGameId).update({
+            'blockchain.joinTxHash': tx.hash,
+            'blockchain.joinPending': true
+        });
+        
+        // Transaction'ı bekle
+        const receipt = await tx.wait();
+        
+        // Başarılı ise Firebase'i güncelle
+        if (receipt.status === 1) {
+            // Oyun sonucunu blockchain'den al
+            const result = await getGameResultFromBlockchain(blockchainGameId);
+            
+            await db.collection('games').doc(firebaseGameId).update({
+                'blockchain.joinConfirmed': true,
+                'blockchain.joinPending': false,
+                'state': 'FINISHED',
+                'result': result.winner,
+                'finishedAt': firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            // Kullanıcı istatistiklerini güncelle
+            updateUserStats(gameDoc.data(), result);
+            
+            // Oyun listesini güncelle
+            loadFirebaseGames();
+        } else {
+            // Başarısız ise hata durumunu güncelle
+            await db.collection('games').doc(firebaseGameId).update({
+                'blockchain.joinConfirmed': false,
+                'blockchain.joinPending': false,
+                'blockchain.joinError': 'Transaction failed',
+                'state': 'ERROR'
+            });
+        }
+        
+        return receipt;
+    } catch (error) {
+        console.error("Blockchain oyuna katılma hatası:", error);
+        
+        // Hata durumunu Firebase'e kaydet
+        await db.collection('games').doc(firebaseGameId).update({
+            'blockchain.joinConfirmed': false,
+            'blockchain.joinPending': false,
+            'blockchain.joinError': error.message,
+            'state': 'ERROR'
+        });
+        
+        throw error;
+    }
+}
+
+// Blockchain'den oyun sonucunu al
+async function getGameResultFromBlockchain(gameId) {
+    try {
+        const gameResult = await contract.getGameResult(gameId);
+        
+        // Sonucu dönüştür
+        return {
+            winner: gameResult.winner,
+            creatorMove: gameResult.creatorMove,
+            challengerMove: gameResult.challengerMove
+        };
+    } catch (error) {
+        console.error("Oyun sonucu alma hatası:", error);
+        return { winner: 'unknown', creatorMove: 0, challengerMove: 0 };
     }
 } 
