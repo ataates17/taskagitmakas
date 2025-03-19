@@ -3,98 +3,29 @@ pragma solidity ^0.8.0;
 
 contract RockPaperScissors {
     enum Move { None, Rock, Paper, Scissors }
-    enum GameState { Created, Finished, Cancelled }
+    enum GameState { Created, Joined, Revealed, Finished }
     
     struct Game {
         address creator;
         address challenger;
         uint256 stake;
-        bytes32 commitHash; // Şifrelenmiş hamle
-        string salt; // Tuz değeri (reveal için)
+        bytes32 commitHash;
         Move creatorMove;
         Move challengerMove;
         GameState state;
         address winner;
-        uint256 createdAt;
-        uint256 finishedAt;
     }
     
     mapping(uint256 => Game) public games;
     uint256 public gameCount;
     
-    // Kullanıcı başına maksimum aktif oyun sayısı
-    uint256 public constant MAX_GAMES_PER_USER = 5;
-    
-    // Minimum bahis miktarı
-    uint256 public MIN_STAKE = 0.001 ether;
-    
-    // Oyun oluşturma aralığı (saniye)
-    uint256 public GAME_CREATION_INTERVAL = 60;
-    
-    // Kullanıcı başına son oyun oluşturma zamanı
-    mapping(address => uint256) public lastGameCreationTime;
-    
-    // Kullanıcı başına aktif oyun sayısı
-    mapping(address => uint256) public activeGamesCount;
-    
-    // Platform istatistikleri
-    uint256 public totalGamesPlayed;
-    uint256 public totalEthTraded;
-    
-    // Olaylar
     event GameCreated(uint256 indexed gameId, address indexed creator, uint256 stake);
     event GameJoined(uint256 indexed gameId, address indexed challenger, uint256 stake);
-    event GameFinished(uint256 indexed gameId, address indexed winner, uint256 stake);
-    event GameCancelled(uint256 indexed gameId);
+    event GameRevealed(uint256 indexed gameId, Move creatorMove, Move challengerMove, address winner);
     
-    // Reentrancy koruması için durum değişkeni
-    uint256 private constant _NOT_ENTERED = 1;
-    uint256 private constant _ENTERED = 2;
-    uint256 private _status;
-
-    constructor() {
-        _status = _NOT_ENTERED;
-    }
-
-    // Daha güvenli reentrancy koruması için modifier
-    modifier nonReentrant() {
-        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
-        _status = _ENTERED;
-        _;
-        _status = _NOT_ENTERED;
-    }
-    
-    // Oyun oluştur - geliştirilmiş front-running koruması
-    function createGame(bytes32 commitHash, string memory salt) external payable {
-        require(msg.value >= MIN_STAKE, "Stake too low");
-        require(activeGamesCount[msg.sender] < MAX_GAMES_PER_USER, "Too many active games");
-        require(block.timestamp >= lastGameCreationTime[msg.sender] + GAME_CREATION_INTERVAL, "Please wait before creating another game");
-        
-        // Salt değerinin yeterince karmaşık olduğunu kontrol et
-        require(bytes(salt).length >= 32, "Salt must be at least 32 characters");
-        
-        // Salt değerinin benzersiz olduğunu kontrol et
-        bytes32 saltHash = keccak256(abi.encodePacked(salt));
-        
-        // Kullanıcının son 20 oyununu kontrol et
-        uint256 startIndex = gameCount > 20 ? gameCount - 20 : 0;
-        for (uint256 i = startIndex; i < gameCount; i++) {
-            if (games[i].creator == msg.sender && 
-                keccak256(abi.encodePacked(games[i].salt)) == saltHash &&
-                games[i].state == GameState.Created) {
-                revert("Salt already used in an active game");
-            }
-        }
-        
-        // Commit hash'in geçerli olduğunu kontrol et
-        bool validHash = false;
-        for (uint8 m = 1; m <= 3; m++) {
-            if (keccak256(abi.encodePacked(m, salt)) == commitHash) {
-                validHash = true;
-                break;
-            }
-        }
-        require(validHash, "Invalid commit hash");
+    // Oyun oluştur
+    function createGame(bytes32 commitHash) external payable returns (uint256) {
+        require(msg.value > 0, "Stake must be greater than 0");
         
         uint256 gameId = gameCount;
         games[gameId] = Game({
@@ -102,167 +33,88 @@ contract RockPaperScissors {
             challenger: address(0),
             stake: msg.value,
             commitHash: commitHash,
-            salt: salt,
-            creatorMove: Move.None, // Henüz açıklanmadı
+            creatorMove: Move.None,
             challengerMove: Move.None,
             state: GameState.Created,
-            winner: address(0),
-            createdAt: block.timestamp,
-            finishedAt: 0
+            winner: address(0)
         });
         
         gameCount++;
-        activeGamesCount[msg.sender]++;
-        lastGameCreationTime[msg.sender] = block.timestamp;
         
         emit GameCreated(gameId, msg.sender, msg.value);
+        
+        return gameId;
     }
     
-    // Oyuna katıl ve otomatik reveal - reentrancy koruması eklenmiş
-    function joinGame(uint256 gameId, Move move) external payable nonReentrant {
+    // Oyuna katıl
+    function joinGame(uint256 gameId, Move move) external payable {
         Game storage game = games[gameId];
         
-        require(game.state == GameState.Created, "Game not available");
-        require(game.creator != msg.sender, "Cannot join your own game");
-        require(msg.value == game.stake, "Stake doesn't match");
-        require(move == Move.Rock || move == Move.Paper || move == Move.Scissors, "Invalid move");
+        require(game.creator != address(0), "Game does not exist");
+        require(game.state == GameState.Created, "Game is not in Created state");
+        require(game.creator != msg.sender, "Creator cannot join their own game");
+        require(msg.value == game.stake, "Stake must match the game stake");
+        require(move > Move.None && move <= Move.Scissors, "Invalid move");
         
         game.challenger = msg.sender;
         game.challengerMove = move;
-        
-        // Otomatik reveal işlemi
-        Move creatorMove = _revealMove(gameId);
-        
-        // Kazananı belirle
-        _determineWinner(gameId, creatorMove, move);
-        
-        activeGamesCount[msg.sender]++;
+        game.state = GameState.Joined;
         
         emit GameJoined(gameId, msg.sender, msg.value);
     }
     
-    // Hamleyi açıkla - geliştirilmiş doğrulama
-    function _revealMove(uint256 gameId) private returns (Move) {
+    // Hamleyi açıkla ve sonucu belirle
+    function revealMove(uint256 gameId, Move move, string memory salt) external {
         Game storage game = games[gameId];
         
-        // Salt değerini kullanarak hamleyi çöz
-        string memory salt = game.salt;
-        bytes32 commitHash = game.commitHash;
+        require(game.state == GameState.Joined, "Game is not in Joined state");
+        require(game.creator == msg.sender, "Only creator can reveal");
+        require(move > Move.None && move <= Move.Scissors, "Invalid move");
         
-        // Tüm olası hamleleri kontrol et
-        for (uint8 m = 1; m <= 3; m++) {
-            bytes32 moveHash = keccak256(abi.encodePacked(m, salt));
-            if (commitHash == moveHash) {
-                Move move = Move(m);
-                game.creatorMove = move;
-                return move;
-            }
-        }
+        // Commit hash'i doğrula
+        bytes32 computedHash = keccak256(abi.encodePacked(uint(move), salt));
+        require(computedHash == game.commitHash, "Invalid move or salt");
         
-        // Geçerli hamle bulunamadı
-        revert("Invalid move hash");
-    }
-    
-    // Güvenli para transferi için yardımcı fonksiyon
-    function _safeTransfer(address payable recipient, uint256 amount) private {
-        (bool success, ) = recipient.call{value: amount}("");
-        require(success, "Transfer failed");
-    }
-    
-    // Kazananı belirle - güvenli transfer ile
-    function _determineWinner(uint256 gameId, Move creatorMove, Move challengerMove) private {
-        Game storage game = games[gameId];
+        game.creatorMove = move;
+        game.state = GameState.Revealed;
         
         // Kazananı belirle
-        address winner;
+        address winner = determineWinner(game.creatorMove, game.challengerMove, game.creator, game.challenger);
+        game.winner = winner;
+        game.state = GameState.Finished;
         
+        // Ödülü gönder
+        uint256 reward = game.stake * 2;
+        if (winner == address(0)) {
+            // Berabere durumunda her iki oyuncuya da stake'lerini geri gönder
+            payable(game.creator).transfer(game.stake);
+            payable(game.challenger).transfer(game.stake);
+        } else {
+            // Kazanan tüm ödülü alır
+            payable(winner).transfer(reward);
+        }
+        
+        emit GameRevealed(gameId, game.creatorMove, game.challengerMove, winner);
+    }
+    
+    // Kazananı belirle
+    function determineWinner(Move creatorMove, Move challengerMove, address creator, address challenger) internal pure returns (address) {
         if (creatorMove == challengerMove) {
-            // Berabere
-            winner = address(0);
-            
-            // Önce durumu güncelle
-            game.winner = winner;
-            game.state = GameState.Finished;
-            game.finishedAt = block.timestamp;
-            
-            // Aktif oyun sayılarını güncelle
-            activeGamesCount[game.creator]--;
-            activeGamesCount[game.challenger]--;
-            
-            // İstatistikleri güncelle
-            totalGamesPlayed++;
-            totalEthTraded += game.stake * 2;
-            
-            // Güvenli transfer işlemleri
-            _safeTransfer(payable(game.creator), game.stake);
-            _safeTransfer(payable(game.challenger), game.stake);
-        } else if (
+            return address(0); // Berabere
+        }
+        
+        if (
             (creatorMove == Move.Rock && challengerMove == Move.Scissors) ||
             (creatorMove == Move.Paper && challengerMove == Move.Rock) ||
             (creatorMove == Move.Scissors && challengerMove == Move.Paper)
         ) {
-            // Oluşturucu kazandı
-            winner = game.creator;
-            
-            // Önce durumu güncelle
-            game.winner = winner;
-            game.state = GameState.Finished;
-            game.finishedAt = block.timestamp;
-            
-            // Aktif oyun sayılarını güncelle
-            activeGamesCount[game.creator]--;
-            activeGamesCount[game.challenger]--;
-            
-            // İstatistikleri güncelle
-            totalGamesPlayed++;
-            totalEthTraded += game.stake * 2;
-            
-            // Güvenli transfer işlemi
-            _safeTransfer(payable(winner), game.stake * 2);
+            return creator; // Creator kazandı
         } else {
-            // Meydan okuyan kazandı
-            winner = game.challenger;
-            
-            // Önce durumu güncelle
-            game.winner = winner;
-            game.state = GameState.Finished;
-            game.finishedAt = block.timestamp;
-            
-            // Aktif oyun sayılarını güncelle
-            activeGamesCount[game.creator]--;
-            activeGamesCount[game.challenger]--;
-            
-            // İstatistikleri güncelle
-            totalGamesPlayed++;
-            totalEthTraded += game.stake * 2;
-            
-            // Şimdi transfer işlemini yap
-            payable(winner).transfer(game.stake * 2);
+            return challenger; // Challenger kazandı
         }
-        
-        emit GameFinished(gameId, winner, game.stake * 2);
     }
     
-    // Oyunu iptal et - reentrancy koruması eklenmiş
-    function cancelGame(uint256 gameId) external nonReentrant {
-        Game storage game = games[gameId];
-        
-        require(game.state == GameState.Created, "Game cannot be cancelled");
-        require(game.creator == msg.sender, "Only creator can cancel");
-        
-        // Önce durumu güncelle
-        game.state = GameState.Cancelled;
-        
-        // Aktif oyun sayısını güncelle
-        activeGamesCount[game.creator]--;
-        
-        // Şimdi transfer işlemini yap
-        payable(game.creator).transfer(game.stake);
-        
-        emit GameCancelled(gameId);
-    }
-    
-    // Oyun bilgilerini al
+    // Oyun bilgilerini getir
     function getGameInfo(uint256 gameId) external view returns (
         address creator,
         address challenger,
@@ -280,77 +132,19 @@ contract RockPaperScissors {
         );
     }
     
-    // Oyun durumunu al
-    function getGameState(uint256 gameId) external view returns (
-        GameState state,
-        uint256 createdAt,
-        uint256 finishedAt
+    // Oyun sonucunu getir
+    function getGameResult(uint256 gameId) external view returns (
+        address winner,
+        Move creatorMove,
+        Move challengerMove
     ) {
         Game storage game = games[gameId];
+        require(game.state == GameState.Finished, "Game is not finished");
+        
         return (
-            game.state,
-            game.createdAt,
-            game.finishedAt
+            game.winner,
+            game.creatorMove,
+            game.challengerMove
         );
     }
-    
-    // Oyun geçerli mi kontrol et
-    function isValidGame(uint256 gameId) external view returns (bool) {
-        if (gameId >= gameCount) return false;
-        Game storage game = games[gameId];
-        return game.state != GameState.Cancelled;
-    }
-    
-    // Kullanıcının aktif oyun sayısını al
-    function getActiveGames(address user) external view returns (uint256) {
-        return activeGamesCount[user];
-    }
-    
-    // Kullanıcının bir sonraki oyun oluşturma zamanını al
-    function getNextAllowedGameTime(address user) external view returns (uint256) {
-        uint256 nextTime = lastGameCreationTime[user] + GAME_CREATION_INTERVAL;
-        if (block.timestamp >= nextTime) return 0;
-        return nextTime;
-    }
-    
-    // Platform istatistiklerini al
-    function getPlatformStats() external view returns (
-        uint256 _totalGamesPlayed,
-        uint256 _totalEthTraded
-    ) {
-        return (totalGamesPlayed, totalEthTraded);
-    }
-    
-    // Zaman aşımı süresi (örneğin 24 saat)
-    uint256 public GAME_TIMEOUT_PERIOD = 86400;
-    
-    // Zaman aşımı nedeniyle oyunu iptal et - geliştirilmiş
-    function claimTimeout(uint256 gameId) external nonReentrant {
-        Game storage game = games[gameId];
-        
-        require(game.state == GameState.Created, "Game not in created state");
-        require(block.timestamp > game.createdAt + GAME_TIMEOUT_PERIOD, "Timeout period not passed yet");
-        
-        // Sadece herhangi biri değil, ilgili taraflar iptal edebilir
-        require(
-            msg.sender == game.creator || 
-            (game.challenger != address(0) && msg.sender == game.challenger),
-            "Only creator or challenger can claim timeout"
-        );
-        
-        // Önce durumu güncelle
-        game.state = GameState.Cancelled;
-        
-        // Aktif oyun sayısını güncelle
-        if (game.creator != address(0)) {
-            activeGamesCount[game.creator]--;
-        }
-        
-        emit GameCancelled(gameId);
-        
-        // Güvenli transfer işlemi
-        if (game.creator != address(0)) {
-            _safeTransfer(payable(game.creator), game.stake);
-        }
-    }
-} 
+}
