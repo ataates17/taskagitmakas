@@ -1092,9 +1092,12 @@ async function joinGameTransaction(gameId, move) {
 
         console.log("Gönderilen stake miktarı:", ethers.utils.formatEther(stake), "ETH");
 
+        // Secret değeri oluştur veya bir sabit kullanın
+        const secret = "mySecret"; // Bu değeri geçici olarak sabit kullanıyoruz
+
         // İşlemi gönder
-        const tx = await contract.joinGame(gameId, move, {
-            value: stake, // Doğru stake miktarını gönder
+        const tx = await contract.joinGame(gameId, move, secret, {
+            value: stake,
             gasLimit: 300000
         });
 
