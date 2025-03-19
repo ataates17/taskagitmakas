@@ -338,61 +338,58 @@ async function loadPlatformStats() {
 // Oyunları yükle
 async function loadGames() {
     try {
-        const gameCount = await contract.gameCount();
-        let gamesHtml = '';
+        if (!contract) return;
         
-        if (gameCount.eq(0)) {
-            gamesHtml = '<p>Henüz oyun oluşturulmamış.</p>';
-        } else {
-            // En son 10 oyunu göster
-            const start = Math.max(0, gameCount.sub(10).toNumber());
-            const end = gameCount.toNumber();
-            
-            for (let i = start; i < end; i++) {
-                try {
-                    const isValid = await contract.isValidGame(i);
-                    if (!isValid) continue;
-
-                    const gameInfo = await contract.getGameInfo(i);
-                    const stake = ethers.utils.formatEther(gameInfo.stake);
-                    
-                    gamesHtml += `
-                        <div class="game-item">
-                            <h3>Oyun #${i}</h3>
-                            <p><strong>Oluşturan:</strong> ${shortenAddress(gameInfo.creator)}</p>
-                            <p><strong>Bahis:</strong> ${stake} ETH</p>
-                            ${gameInfo.state === 0 ? `
-                                <button onclick="prepareJoinGame(${i}, '${stake}')" class="btn secondary">
-                                    Bu Oyuna Katıl (${stake} ETH)
-                                </button>
-                            ` : ''}
-                        </div>
-                    `;
-                } catch (error) {
-                    console.error(`Oyun #${i} yüklenirken hata:`, error);
-                    continue;
-                }
+        const gamesList = document.getElementById('games-list');
+        gamesList.innerHTML = '<p>Oyunlar yükleniyor...</p>';
+        
+        // Toplam oyun sayısını al
+        const gameCount = await contract.gameCount();
+        console.log("Toplam oyun sayısı:", gameCount.toString());
+        
+        // Son 10 oyunu al
+        const games = [];
+        const startIndex = Math.max(0, gameCount.toNumber() - 10);
+        
+        for (let i = gameCount.toNumber() - 1; i >= startIndex; i--) {
+            try {
+                // Oyun bilgilerini al
+                const gameInfo = await contract.getGameInfo(i);
+                const gameState = await contract.getGameState(i);
+                
+                // Oyun geçerli mi kontrol et
+                const isValid = await contract.isValidGame(i);
+                if (!isValid && gameState.state !== 3) continue; // Bitmiş oyunları göster
+                
+                games.push({
+                    id: i,
+                    creator: gameInfo.creator,
+                    challenger: gameInfo.challenger,
+                    stake: ethers.utils.formatEther(gameInfo.stake),
+                    state: gameInfo.state,
+                    winner: gameInfo.winner
+                });
+            } catch (error) {
+                console.error(`Oyun ${i} yüklenirken hata:`, error);
             }
         }
         
-        document.getElementById('games-list').innerHTML = gamesHtml || '<p>Katılabileceğiniz oyun bulunamadı.</p>';
+        // Oyunları render et
+        renderGames(games);
+        
     } catch (error) {
         console.error("Oyunları yükleme hatası:", error);
-        document.getElementById('games-list').innerHTML = `<p>Hata: ${error.message}</p>`;
+        document.getElementById('games-list').innerHTML = '<p>Oyunlar yüklenirken hata oluştu.</p>';
     }
 }
 
 // Oyuna katılmak için hazırlık
-function prepareJoinGame(gameId, stake) {
-    if (!gameId || isNaN(gameId)) {
-        console.error("Geçersiz oyun ID:", gameId);
-        return;
-    }
-
-    console.log("Oyuna katılım hazırlığı:", { gameId, stake });
+function prepareJoinGame(gameId) {
     document.getElementById('game-id').value = gameId;
-    document.getElementById('join-stake').value = stake;
-    document.querySelector('.card:nth-child(3)').scrollIntoView({ behavior: 'smooth' });
+    loadGameDetails();
+    
+    // Sayfayı oyuna katıl bölümüne kaydır
+    document.querySelector('section:nth-child(3)').scrollIntoView({ behavior: 'smooth' });
 }
 
 // Oyun durumu metni
@@ -860,5 +857,44 @@ async function handleRevealMove(gameId) {
     } catch (error) {
         resultDiv.innerHTML = "Reveal başarısız: " + error.message;
         resultDiv.className = "result error";
+    }
+}
+
+// Oyunu iptal et
+async function cancelGame(gameId) {
+    try {
+        const gameIdNum = parseInt(gameId);
+        if (isNaN(gameIdNum) || gameIdNum < 0) {
+            throw new Error("Geçersiz oyun ID");
+        }
+        
+        // Oyun bilgilerini kontrol et
+        const gameInfo = await contract.getGameInfo(gameIdNum);
+        
+        if (gameInfo.creator !== userAddress) {
+            throw new Error("Sadece oyun yaratıcısı iptal edebilir");
+        }
+        
+        if (gameInfo.state !== 0) { // 0 = Created state
+            throw new Error("Oyun iptal için uygun durumda değil");
+        }
+        
+        console.log("İptal işlemi başlatılıyor...");
+        const tx = await contract.cancelGame(gameIdNum, {
+            gasLimit: 200000
+        });
+        
+        console.log("İptal transaction gönderildi:", tx.hash);
+        const receipt = await tx.wait(1);
+        console.log("İptal transaction onaylandı:", receipt);
+        
+        // Oyun listesini güncelle
+        await loadGames();
+        
+        return receipt;
+    } catch (error) {
+        console.error("İptal hatası:", error);
+        alert("Oyun iptal edilirken hata: " + error.message);
+        throw error;
     }
 } 
