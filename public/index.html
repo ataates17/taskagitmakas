@@ -6,13 +6,7 @@
     <title>Taş Kağıt Makas - Blockchain Oyunu</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>" type="image/svg+xml">
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script>
 </head>
 <body>
     <header>
@@ -83,15 +77,8 @@
                 <div class="card-header">
                     <h2>Platform İstatistikleri</h2>
                 </div>
-                <div class="card-content stats-container">
-                    <div class="stat-item">
-                        <div class="stat-label">Toplam Oyun</div>
-                        <div id="total-games" class="stat-value">-</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-label">Toplam İşlem Hacmi</div>
-                        <div id="total-eth" class="stat-value">- ETH</div>
-                    </div>
+                <div id="platform-stats" class="stats">
+                    <p>İstatistikler yükleniyor...</p>
                 </div>
             </section>
 
@@ -101,83 +88,68 @@
                 <div id="test-result" class="result"></div>
             </div>
 
-            <!-- Oyun Oluşturma Modal -->
+            <!-- Oyun oluşturma popup'ı -->
             <div id="create-game-modal" class="modal">
                 <div class="modal-content">
-                    <span class="close-modal">&times;</span>
-                    <h2>Yeni Oyun Oluştur</h2>
-                    
-                    <div class="modal-section">
-                        <h3>Hamlenizi Seçin</h3>
-                        <div class="move-options">
-                            <div class="move-option" data-move="1">
-                                <img src="img/rock.png" alt="Taş">
-                                <span>Taş</span>
+                    <div class="modal-header">
+                        <h3>Yeni Oyun Oluştur</h3>
+                        <button class="close-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="move-selection">
+                            <h4>Hamlenizi Seçin</h4>
+                            <div class="move-options">
+                                <div class="move-option" data-move="1">
+                                    <img src="img/rock.png" alt="Taş">
+                                    <span>Taş</span>
+                                </div>
+                                <div class="move-option" data-move="2">
+                                    <img src="img/paper.png" alt="Kağıt">
+                                    <span>Kağıt</span>
+                                </div>
+                                <div class="move-option" data-move="3">
+                                    <img src="img/scissors.png" alt="Makas">
+                                    <span>Makas</span>
+                                </div>
                             </div>
-                            <div class="move-option" data-move="2">
-                                <img src="img/paper.png" alt="Kağıt">
-                                <span>Kağıt</span>
+                        </div>
+                        
+                        <div class="stake-selection">
+                            <h4>Bahis Miktarı</h4>
+                            <div class="stake-options">
+                                <div class="stake-option" data-stake="0.001">
+                                    <span class="stake-amount">0.001 ETH</span>
+                                    <span class="stake-label">Minimum</span>
+                                </div>
+                                <div class="stake-option" data-stake="0.01">
+                                    <span class="stake-amount">0.01 ETH</span>
+                                    <span class="stake-label">Standart</span>
+                                </div>
+                                <div class="stake-option" data-stake="0.05">
+                                    <span class="stake-amount">0.05 ETH</span>
+                                    <span class="stake-label">Yüksek</span>
+                                </div>
+                                <div class="stake-option custom">
+                                    <input type="number" id="custom-stake" placeholder="Özel miktar" min="0.001" step="0.001">
+                                    <span class="stake-label">Özel</span>
+                                </div>
                             </div>
-                            <div class="move-option" data-move="3">
-                                <img src="img/scissors.png" alt="Makas">
-                                <span>Makas</span>
+                        </div>
+                        
+                        <div class="selected-options">
+                            <div class="selected-move">
+                                <span class="label">Seçilen Hamle:</span>
+                                <span class="value">Seçilmedi</span>
+                            </div>
+                            <div class="selected-stake">
+                                <span class="label">Seçilen Bahis:</span>
+                                <span class="value">Seçilmedi</span>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="modal-section">
-                        <h3>Bahis Miktarını Seçin</h3>
-                        <div class="stake-options">
-                            <div class="stake-option" data-stake="0.01">0.01 ETH</div>
-                            <div class="stake-option" data-stake="0.05">0.05 ETH</div>
-                            <div class="stake-option" data-stake="0.1">0.1 ETH</div>
-                            <div class="stake-option" data-stake="0.5">0.5 ETH</div>
-                        </div>
-                        <div class="custom-stake">
-                            <label for="custom-stake">Özel Miktar (ETH):</label>
-                            <input type="number" id="custom-stake" min="0.001" step="0.001" placeholder="Örn: 0.25">
-                        </div>
-                    </div>
-                    
-                    <div class="modal-actions">
-                        <button id="confirm-create" class="btn primary" onclick="createGame()">Oyun Oluştur</button>
-                        <button class="btn secondary" onclick="closeModal()">İptal</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Oyuna Katılma Modal -->
-            <div id="join-game-modal" class="modal">
-                <div class="modal-content">
-                    <span class="close-join-modal">&times;</span>
-                    <h2>Oyuna Katıl</h2>
-                    
-                    <div class="game-details">
-                        <p><strong>Oyun ID:</strong> <span id="join-game-id"></span></p>
-                        <p><strong>Bahis:</strong> <span id="join-game-stake"></span></p>
-                    </div>
-                    
-                    <div class="modal-section">
-                        <h3>Hamlenizi Seçin</h3>
-                        <div class="move-options">
-                            <div class="join-move-option" data-move="1">
-                                <img src="img/rock.png" alt="Taş">
-                                <span>Taş</span>
-                            </div>
-                            <div class="join-move-option" data-move="2">
-                                <img src="img/paper.png" alt="Kağıt">
-                                <span>Kağıt</span>
-                            </div>
-                            <div class="join-move-option" data-move="3">
-                                <img src="img/scissors.png" alt="Makas">
-                                <span>Makas</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="modal-actions">
-                        <button id="confirm-join" class="btn primary">Oyuna Katıl</button>
-                        <button class="btn secondary" onclick="closeModal()">İptal</button>
+                    <div class="modal-footer">
+                        <button id="modal-create-game" class="btn primary" disabled>Oyun Oluştur</button>
+                        <button class="btn outline cancel-modal">İptal</button>
                     </div>
                 </div>
             </div>
@@ -185,26 +157,69 @@
             <!-- Overlay -->
             <div id="modal-overlay" class="modal-overlay"></div>
 
-            <!-- Oyun açıklaması -->
+            <!-- Reveal açıklaması -->
             <div class="info-box">
-                <h4>Taş Kağıt Makas Oyunu Nasıl Çalışır?</h4>
-                <p>Taş-Kağıt-Makas oyunu blockchain üzerinde tamamen şeffaf ve adil bir şekilde oynanır:</p>
+                <h4>Reveal İşlemi Nedir?</h4>
+                <p>Taş-Kağıt-Makas oyununda, hamlelerin gizli tutulması için iki aşamalı bir süreç kullanılır:</p>
                 <ol>
-                    <li><strong>Oyun Oluşturma:</strong> Bir oyuncu hamlesini gizli olarak seçer ve bahis miktarını belirler.</li>
-                    <li><strong>Oyuna Katılma:</strong> Başka bir oyuncu kendi hamlesini seçerek oyuna katılır.</li>
-                    <li><strong>Sonuç:</strong> Sistem otomatik olarak ilk oyuncunun hamlesini açıklar ve kazanan belirlenir.</li>
+                    <li><strong>Hamle Oluşturma:</strong> Oyun yaratıcısı hamlesini şifrelenmiş olarak gönderir.</li>
+                    <li><strong>Hamle Açıklama (Reveal):</strong> Meydan okuyan oyuncu hamlesini gönderdikten sonra, oyun yaratıcısı kendi hamlesini açıklar ve sonuç belirlenir.</li>
                 </ol>
-                <p>Klasik kurallar geçerlidir: Taş makası, makas kağıdı, kağıt taşı yener. Aynı hamle berabere sonuçlanır.</p>
+                <p>Eğer bir oyun yaratıcısıysanız ve oyununuza birisi katıldıysa, reveal işlemi yapmanız gerekir.</p>
             </div>
 
-            <!-- Otomatik reveal seçeneği - artık gerekli değil -->
-            <!-- <div class="auto-reveal-option">
+            <div class="auto-reveal-option">
                 <label class="checkbox-container">
                     <input type="checkbox" id="auto-reveal" checked>
                     <span class="checkmark"></span>
                     Otomatik Reveal (Birisi oyuna katıldığında otomatik olarak reveal işlemi yap)
                 </label>
-            </div> -->
+            </div>
+
+            <!-- Oyuna katılma popup'ı -->
+            <div id="join-game-modal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Oyuna Katıl</h3>
+                        <button class="close-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="game-info">
+                            <div class="game-id-info">Oyun ID: <span id="join-game-id">-</span></div>
+                            <div class="stake-info">Bahis: <span id="join-game-stake">-</span> ETH</div>
+                        </div>
+                        
+                        <div class="move-selection">
+                            <h4>Hamlenizi Seçin</h4>
+                            <div class="move-options">
+                                <div class="move-option" data-move="1">
+                                    <img src="img/rock.png" alt="Taş">
+                                    <span>Taş</span>
+                                </div>
+                                <div class="move-option" data-move="2">
+                                    <img src="img/paper.png" alt="Kağıt">
+                                    <span>Kağıt</span>
+                                </div>
+                                <div class="move-option" data-move="3">
+                                    <img src="img/scissors.png" alt="Makas">
+                                    <span>Makas</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="selected-options">
+                            <div class="selected-move">
+                                <span class="label">Seçilen Hamle:</span>
+                                <span class="value">Seçilmedi</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="modal-join-game" class="btn primary" disabled>Oyuna Katıl</button>
+                        <button class="btn outline cancel-modal">İptal</button>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <footer>
@@ -216,7 +231,6 @@
     </div>
 
     <script src="js/contractABI.js"></script>
-    <script src="js/firebase-config.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/app.js"></script>
 </body>
