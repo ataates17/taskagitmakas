@@ -703,55 +703,6 @@ async function joinGameTransaction(gameId, move) {
     }
 }
 
-// Yeni oyun oluştur ve katıl
-async function createAndJoinGame() {
-    try {
-        // Yeni oyun oluştur
-        const createTx = await contract.createGame(1, {
-            value: ethers.utils.parseEther("0.001"),
-            gasLimit: 300000
-        });
-        const createReceipt = await createTx.wait();
-        console.log("Oyun oluşturuldu:", createReceipt);
-        
-        // Oyun ID'sini al
-        const gameId = await contract.gameCount() - 1;
-        console.log("Oluşturulan oyun ID:", gameId.toString());
-        
-        // Oyuna katıl
-        const joinTx = await contract.joinGame(gameId, 2, {
-            value: ethers.utils.parseEther("0.001"),
-            gasLimit: 300000
-        });
-        const joinReceipt = await joinTx.wait();
-        console.log("Oyuna katılındı:", joinReceipt);
-        
-        return joinReceipt;
-    } catch (error) {
-        console.error("Hata:", error);
-        throw error;
-    }
-}
-
-// Test butonu için event listener
-document.getElementById('create-and-join').addEventListener('click', async () => {
-    const resultDiv = document.getElementById('test-result');
-    resultDiv.innerHTML = "Test işlemi başlatılıyor...";
-    resultDiv.className = "result pending";
-    
-    try {
-        const receipt = await createAndJoinGame();
-        resultDiv.innerHTML = "Test başarılı! Transaction: " + receipt.transactionHash;
-        resultDiv.className = "result success";
-        
-        // Oyun listesini güncelle
-        await loadGames();
-    } catch (error) {
-        resultDiv.innerHTML = "Test başarısız: " + error.message;
-        resultDiv.className = "result error";
-    }
-});
-
 // Reveal işlemi için fonksiyon
 async function revealMove(gameId) {
     try {
