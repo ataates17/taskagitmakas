@@ -1,11 +1,4 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Firebase yapılandırması
 const firebaseConfig = {
   apiKey: "AIzaSyDqCcJ_1u0e58fqGTavGclKKrdlP6i17JI",
   authDomain: "taskagitmak-f62e4.firebaseapp.com",
@@ -16,6 +9,12 @@ const firebaseConfig = {
   measurementId: "G-1V5H78G7T1"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// Firebase'i başlat
+firebase.initializeApp(firebaseConfig);
+
+// Firestore referansı
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+// Firebase Analytics (isteğe bağlı)
+const analytics = firebase.analytics();

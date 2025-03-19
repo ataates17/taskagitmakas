@@ -57,8 +57,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 walletInfo.textContent = shortenAddress(userAddress);
                 walletInfo.style.display = 'block';
                 
-                // Firebase ile giriş yap
-                await signInWithMetaMask();
+                // Cüzdan adresi ile kullanıcı oluştur veya giriş yap
+                await signInWithWalletAddress();
+                
+                // Oyunları yükle
+                loadGames();
             }
             
             // Platform istatistiklerini yükle
@@ -163,11 +166,11 @@ async function connectWallet() {
             // Kontratı signer ile bağla
             contract = new ethers.Contract(contractAddress, contractABI, signer);
             
-            // Firebase ile giriş yap
-            await signInWithMetaMask();
+            // Cüzdan adresi ile kullanıcı oluştur veya giriş yap
+            await signInWithWalletAddress();
             
             // Oyunları yükle
-            await loadFirebaseGames();
+            loadGames();
             
             // Kullanıcı bilgilerini yükle
             loadUserInfo();
@@ -186,53 +189,125 @@ async function connectWallet() {
     }
 }
 
-// MetaMask ile Firebase'e giriş yap
-async function signInWithMetaMask() {
+// Cüzdan adresi ile kullanıcı oluştur veya giriş yap
+async function signInWithWalletAddress() {
     try {
         if (!userAddress) {
             throw new Error("Ethereum adresi bulunamadı");
         }
         
-        // Geçici çözüm: Anonim oturum açma kullan
-        try {
-            // Önce mevcut kullanıcıyı kontrol et
-            const currentUser = firebase.auth().currentUser;
-            if (currentUser) {
-                firebaseUser = currentUser;
-                console.log("Mevcut Firebase kullanıcısı:", firebaseUser.uid);
-                return true;
-            }
-            
-            // Anonim oturum aç
-            const userCredential = await firebase.auth().signInAnonymously();
-            firebaseUser = userCredential.user;
-            
-            // Kullanıcı profilini oluştur veya güncelle
-            await db.collection('users').doc(firebaseUser.uid).set({
-                address: userAddress,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                gamesPlayed: 0,
-                gamesWon: 0,
-                gamesLost: 0,
-                gamesTied: 0,
-                totalStaked: 0,
-                totalWon: 0,
-                totalLost: 0
-            }, { merge: true });
-            
-            console.log("Firebase'e anonim giriş yapıldı:", firebaseUser.uid);
-            
-            // Oyunları yükle
-            await loadFirebaseGames();
-            
+        // Önce mevcut kullanıcıyı kontrol et
+        const currentUser = firebase.auth().currentUser;
+        if (currentUser) {
+            // Kullanıcı zaten giriş yapmış, profili güncelle
+            await updateUserProfile(currentUser.uid, userAddress);
+            firebaseUser = currentUser;
+            console.log("Mevcut kullanıcı profili güncellendi:", firebaseUser.uid);
             return true;
-        } catch (anonError) {
-            console.error("Anonim giriş hatası:", anonError);
-            throw anonError;
         }
+        
+        // Anonim oturum aç
+        const userCredential = await firebase.auth().signInAnonymously();
+        firebaseUser = userCredential.user;
+        
+        // Kullanıcı profilini oluştur
+        await createUserProfile(firebaseUser.uid, userAddress);
+        
+        console.log("Yeni kullanıcı oluşturuldu:", firebaseUser.uid);
+        
+        // Oyunları yükle
+        await loadFirebaseGames();
+        
+        return true;
     } catch (error) {
-        console.error("Firebase giriş hatası:", error);
+        console.error("Kullanıcı oluşturma hatası:", error);
         return false;
+    }
+}
+
+// Kullanıcı profili oluştur
+async function createUserProfile(userId, walletAddress) {
+    try {
+        // Önce bu cüzdan adresiyle ilişkili kullanıcı var mı kontrol et
+        const existingUsers = await db.collection('users')
+            .where('walletAddress', '==', walletAddress.toLowerCase())
+            .limit(1)
+            .get();
+        
+        if (!existingUsers.empty) {
+            // Bu cüzdan adresi zaten kayıtlı, mevcut profili kullan
+            const existingUser = existingUsers.docs[0];
+            console.log("Bu cüzdan adresi zaten kayıtlı:", existingUser.id);
+            
+            // Mevcut kullanıcı verilerini al
+            const userData = existingUser.data();
+            
+            // Yeni kullanıcı ID'si ile mevcut verileri birleştir
+            await db.collection('users').doc(userId).set({
+                ...userData,
+                walletAddress: walletAddress.toLowerCase(),
+                lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            // Eski kullanıcı profilini sil (isteğe bağlı)
+            // await db.collection('users').doc(existingUser.id).delete();
+            
+            return;
+        }
+        
+        // Yeni kullanıcı profili oluştur
+        await db.collection('users').doc(userId).set({
+            walletAddress: walletAddress.toLowerCase(),
+            displayName: shortenAddress(walletAddress),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
+            gamesPlayed: 0,
+            gamesWon: 0,
+            gamesLost: 0,
+            gamesTied: 0,
+            totalStaked: 0,
+            totalWon: 0,
+            totalLost: 0
+        });
+    } catch (error) {
+        console.error("Kullanıcı profili oluşturma hatası:", error);
+        throw error;
+    }
+}
+
+// Kullanıcı profilini güncelle
+async function updateUserProfile(userId, walletAddress) {
+    try {
+        await db.collection('users').doc(userId).update({
+            walletAddress: walletAddress.toLowerCase(),
+            lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (error) {
+        console.error("Kullanıcı profili güncelleme hatası:", error);
+        throw error;
+    }
+}
+
+// Cüzdan adresine göre kullanıcı profili getir
+async function getUserProfileByWalletAddress(walletAddress) {
+    try {
+        const snapshot = await db.collection('users')
+            .where('walletAddress', '==', walletAddress.toLowerCase())
+            .limit(1)
+            .get();
+        
+        if (snapshot.empty) {
+            return null;
+        }
+        
+        const userDoc = snapshot.docs[0];
+        return {
+            id: userDoc.id,
+            ...userDoc.data()
+        };
+    } catch (error) {
+        console.error("Kullanıcı profili getirme hatası:", error);
+        return null;
     }
 }
 
@@ -481,65 +556,31 @@ async function loadPlatformStats() {
     }
 }
 
-// Oyunları yükle ve kategorilere ayır
+// Oyunları yükle
 async function loadGames() {
     try {
-        if (!contract || !userAddress) return;
+        // Oyunları yüklemeden önce kullanıcı kontrolü
+        if (!userAddress) {
+            document.getElementById('games-list').innerHTML = '<p>Lütfen önce cüzdanınızı bağlayın</p>';
+            return;
+        }
         
-        const gamesList = document.getElementById('games-list');
-        gamesList.innerHTML = '<p>Oyunlar yükleniyor...</p>';
-        
-        // Toplam oyun sayısını al
-        const gameCount = await contract.gameCount();
-        console.log("Toplam oyun sayısı:", gameCount.toString());
-        
-        // Son 30 oyunu kontrol et
-        const openGames = [];
-        const activeGames = [];
-        const finishedGames = [];
-        
-        const startIndex = Math.max(0, gameCount.toNumber() - 30);
-        
-        for (let i = gameCount.toNumber() - 1; i >= startIndex; i--) {
-            try {
-                // Oyun bilgilerini al
-                const gameInfo = await contract.getGameInfo(i);
-                const gameState = await contract.getGameState(i);
-                
-                const gameData = {
-                    id: i,
-                    creator: gameInfo.creator,
-                    challenger: gameInfo.challenger,
-                    stake: ethers.utils.formatEther(gameInfo.stake),
-                    state: gameInfo.state,
-                    winner: gameInfo.winner,
-                    isUserGame: gameInfo.creator === userAddress || gameInfo.challenger === userAddress
-                };
-                
-                // Oyunları kategorilere ayır
-                if (gameInfo.state === 0) { // Created
-                    openGames.push(gameData);
-                } else if (gameInfo.creator === userAddress || gameInfo.challenger === userAddress) {
-                    if (gameInfo.state === 3) { // Finished
-                        finishedGames.push(gameData);
-                    } else { // Joined or Revealed
-                        activeGames.push(gameData);
-                    }
-                }
-            } catch (error) {
-                console.error(`Oyun ${i} yüklenirken hata:`, error);
+        if (!firebaseUser) {
+            // Kullanıcı giriş yapmamış, cüzdan adresi ile giriş yap
+            const success = await signInWithWalletAddress();
+            if (!success) {
+                document.getElementById('games-list').innerHTML = '<p>Kullanıcı oluşturulamadı. Lütfen cüzdanınızı kontrol edin.</p>';
+                return;
             }
         }
         
-        // Oyunları render et
-        renderGameTabs(openGames, activeGames, finishedGames);
-        
-        // Reveal gerektiren oyunları kontrol et
-        checkGamesForReveal();
-        
+        // Firebase'den oyunları yükle
+        await loadFirebaseGames();
     } catch (error) {
         console.error("Oyunları yükleme hatası:", error);
-        document.getElementById('games-list').innerHTML = '<p>Oyunlar yüklenirken hata oluştu.</p>';
+        document.getElementById('games-list').innerHTML = `
+            <p class="error">Oyunlar yüklenirken bir hata oluştu: ${error.message}</p>
+        `;
     }
 }
 
@@ -732,11 +773,52 @@ function getGameStateClass(state) {
 // Kullanıcı bilgilerini yükle
 async function loadUserInfo() {
     try {
-        // LocalStorage'dan oyun oluşturma verilerini yükle
-        const savedData = getFromLocalStorage('gameCreationData');
-        if (savedData) {
-            gameCreationData = savedData;
+        if (!firebaseUser || !userAddress) {
+            return;
         }
+        
+        // Kullanıcı profilini getir
+        const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
+        if (!userDoc.exists) {
+            return;
+        }
+        
+        const userData = userDoc.data();
+        
+        // Kullanıcı istatistiklerini göster
+        const statsContainer = document.createElement('div');
+        statsContainer.className = 'user-stats';
+        statsContainer.innerHTML = `
+            <div class="stats-header">Oyuncu İstatistikleri</div>
+            <div class="stats-item">
+                <span class="label">Toplam Oyun:</span>
+                <span class="value">${userData.gamesPlayed || 0}</span>
+            </div>
+            <div class="stats-item">
+                <span class="label">Kazanılan:</span>
+                <span class="value">${userData.gamesWon || 0}</span>
+            </div>
+            <div class="stats-item">
+                <span class="label">Kaybedilen:</span>
+                <span class="value">${userData.gamesLost || 0}</span>
+            </div>
+            <div class="stats-item">
+                <span class="label">Berabere:</span>
+                <span class="value">${userData.gamesTied || 0}</span>
+            </div>
+            <div class="stats-item">
+                <span class="label">Toplam Bahis:</span>
+                <span class="value">${ethers.utils.formatEther(userData.totalStaked || 0)} ETH</span>
+            </div>
+            <div class="stats-item">
+                <span class="label">Toplam Kazanç:</span>
+                <span class="value">${ethers.utils.formatEther(userData.totalWon || 0)} ETH</span>
+            </div>
+        `;
+        
+        // Kullanıcı istatistiklerini sayfaya ekle
+        const walletInfo = document.getElementById('wallet-info');
+        walletInfo.appendChild(statsContainer);
     } catch (error) {
         console.error("Kullanıcı bilgileri yükleme hatası:", error);
     }
@@ -1463,7 +1545,11 @@ async function loadFirebaseGames() {
 async function createFirebaseGame(move, stake) {
     try {
         if (!firebaseUser) {
-            throw new Error("Lütfen önce giriş yapın");
+            // Kullanıcı giriş yapmamış, cüzdan adresi ile giriş yap
+            const success = await signInWithWalletAddress();
+            if (!success) {
+                throw new Error("Kullanıcı oluşturulamadı. Lütfen cüzdanınızı kontrol edin.");
+            }
         }
         
         // Salt ve commit hash oluştur
@@ -1582,7 +1668,11 @@ async function getGameIdFromReceipt(receipt) {
 async function joinFirebaseGame(gameId, move) {
     try {
         if (!firebaseUser) {
-            throw new Error("Lütfen önce giriş yapın");
+            // Kullanıcı giriş yapmamış, cüzdan adresi ile giriş yap
+            const success = await signInWithWalletAddress();
+            if (!success) {
+                throw new Error("Kullanıcı oluşturulamadı. Lütfen cüzdanınızı kontrol edin.");
+            }
         }
         
         // Oyun bilgilerini al
