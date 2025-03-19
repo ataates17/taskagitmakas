@@ -1007,8 +1007,22 @@ function resetModalSelections() {
         option.classList.remove('selected');
     });
     
-    // Bahis miktarını sıfırla
-    document.getElementById('stake-amount').value = "0.01";
+    // Bahis seçimlerini temizle
+    document.querySelectorAll('.stake-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    // Özel bahis alanını temizle
+    const customStakeInput = document.getElementById('custom-stake');
+    if (customStakeInput) {
+        customStakeInput.value = '';
+    }
+    
+    // Varsayılan bahis miktarını ayarla
+    const stakeAmountInput = document.getElementById('stake-amount');
+    if (stakeAmountInput) {
+        stakeAmountInput.value = "0.01";
+    }
     
     // Otomatik reveal seçeneğini varsayılan olarak etkinleştir
     const autoRevealCheckbox = document.getElementById('auto-reveal');
@@ -1024,8 +1038,14 @@ function resetModalSelections() {
     document.getElementById('modal-create-game').disabled = true;
     
     // Sonuç alanını temizle
-    document.getElementById('modal-result').innerHTML = '';
-    document.getElementById('modal-result').className = 'modal-result';
+    const modalResult = document.getElementById('modal-result');
+    if (modalResult) {
+        modalResult.innerHTML = '';
+        modalResult.className = 'modal-result';
+    }
+    
+    // Seçim özetini güncelle
+    updateSelectionSummary();
 }
 
 // Seçim özetini güncelle
@@ -1090,8 +1110,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Bahis seçimi (hazır opsiyonlar)
-    document.querySelectorAll('.stake-option:not(.custom)').forEach(option => {
+    document.querySelectorAll('.stake-option').forEach(option => {
         option.addEventListener('click', function() {
+            // Özel input alanı ise işlem yapma
+            if (this.classList.contains('custom')) return;
+            
             // Önceki seçimi temizle
             document.querySelectorAll('.stake-option').forEach(opt => {
                 opt.classList.remove('selected');
@@ -1101,8 +1124,17 @@ document.addEventListener('DOMContentLoaded', function() {
             this.classList.add('selected');
             selectedStake = parseFloat(this.getAttribute('data-stake'));
             
+            // Gizli input'a değeri kaydet
+            const stakeAmountInput = document.getElementById('stake-amount');
+            if (stakeAmountInput) {
+                stakeAmountInput.value = selectedStake;
+            }
+            
             // Özel girişi temizle
-            document.getElementById('custom-stake').value = '';
+            const customStakeInput = document.getElementById('custom-stake');
+            if (customStakeInput) {
+                customStakeInput.value = '';
+            }
             
             // Özeti güncelle
             updateSelectionSummary();
@@ -1122,6 +1154,12 @@ document.addEventListener('DOMContentLoaded', function() {
             // Özel seçeneği işaretle
             this.parentElement.classList.add('selected');
             selectedStake = value;
+            
+            // Gizli input'a değeri kaydet
+            const stakeAmountInput = document.getElementById('stake-amount');
+            if (stakeAmountInput) {
+                stakeAmountInput.value = selectedStake;
+            }
             
             // Özeti güncelle
             updateSelectionSummary();
