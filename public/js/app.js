@@ -122,6 +122,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             walletInfo.style.display = 'none';
         });
     }
+
+    // Modal kapatma butonlarına tıklandığında
+    document.querySelectorAll('.close-modal, .close-join-modal').forEach(button => {
+        button.addEventListener('click', closeModal);
+    });
+    
+    // Oyun oluşturma butonuna tıklandığında
+    document.getElementById('confirm-create')?.addEventListener('click', createGame);
 });
 
 // Ethereum Provider'ı başlat
@@ -318,7 +326,7 @@ async function getUserProfileByWalletAddress(walletAddress) {
     }
 }
 
-// Oyun oluştur
+// Oyun oluştur butonuna tıklandığında
 async function handleCreateGame() {
     try {
         if (!userAddress || !signer) {
@@ -1313,4 +1321,129 @@ function ensureProvider() {
     }
     
     return provider;
+}
+
+// Modal işlemleri
+function openCreateGameModal() {
+    // Modal'ı göster
+    document.getElementById('create-game-modal').style.display = 'block';
+    
+    // Hamle seçimlerini sıfırla
+    selectedMove = null;
+    selectedStake = null;
+    
+    document.querySelectorAll('.move-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    document.querySelectorAll('.stake-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    // Hamle seçim butonlarına olay dinleyicisi ekle
+    document.querySelectorAll('.move-option').forEach(option => {
+        option.addEventListener('click', () => {
+            // Önceki seçimi kaldır
+            document.querySelectorAll('.move-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Yeni seçimi işaretle
+            option.classList.add('selected');
+            
+            // Seçilen hamleyi kaydet
+            selectedMove = option.getAttribute('data-move');
+        });
+    });
+    
+    // Bahis seçim butonlarına olay dinleyicisi ekle
+    document.querySelectorAll('.stake-option').forEach(option => {
+        option.addEventListener('click', () => {
+            // Önceki seçimi kaldır
+            document.querySelectorAll('.stake-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Yeni seçimi işaretle
+            option.classList.add('selected');
+            
+            // Seçilen bahisi kaydet
+            selectedStake = option.getAttribute('data-stake');
+        });
+    });
+    
+    // Özel bahis input'una olay dinleyicisi ekle
+    document.getElementById('custom-stake').addEventListener('input', (e) => {
+        const value = e.target.value;
+        if (value && !isNaN(value) && parseFloat(value) > 0) {
+            // Önceki seçimleri kaldır
+            document.querySelectorAll('.stake-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Özel bahisi kaydet
+            selectedStake = value;
+        }
+    });
+    
+    // Modal kapatma butonuna olay dinleyicisi ekle
+    document.querySelector('.close-modal').addEventListener('click', closeModal);
+}
+
+// Modal'ı kapat
+function closeModal() {
+    document.getElementById('create-game-modal').style.display = 'none';
+    document.getElementById('join-game-modal').style.display = 'none';
+}
+
+// Oyuna katılma modalını aç
+function openJoinGameModal(gameId, stake) {
+    // Modal'ı göster
+    document.getElementById('join-game-modal').style.display = 'block';
+    
+    // Oyun bilgilerini göster
+    document.getElementById('join-game-id').textContent = gameId;
+    document.getElementById('join-game-stake').textContent = stake + ' ETH';
+    
+    // Hamle seçimlerini sıfırla
+    selectedMove = null;
+    
+    document.querySelectorAll('.join-move-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    // Hamle seçim butonlarına olay dinleyicisi ekle
+    document.querySelectorAll('.join-move-option').forEach(option => {
+        option.addEventListener('click', () => {
+            // Önceki seçimi kaldır
+            document.querySelectorAll('.join-move-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Yeni seçimi işaretle
+            option.classList.add('selected');
+            
+            // Seçilen hamleyi kaydet
+            selectedMove = option.getAttribute('data-move');
+        });
+    });
+    
+    // Katıl butonuna olay dinleyicisi ekle
+    document.getElementById('confirm-join').addEventListener('click', async () => {
+        if (!selectedMove) {
+            alert("Lütfen bir hamle seçin");
+            return;
+        }
+        
+        try {
+            await joinGame(gameId, selectedMove, stake);
+            closeModal();
+        } catch (error) {
+            console.error("Oyuna katılma hatası:", error);
+            alert("Oyuna katılma hatası: " + error.message);
+        }
+    });
+    
+    // Modal kapatma butonuna olay dinleyicisi ekle
+    document.querySelector('.close-join-modal').addEventListener('click', closeModal);
 } 
