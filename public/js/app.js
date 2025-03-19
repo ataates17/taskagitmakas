@@ -33,40 +33,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Oyun ID'si değiştiğinde
     document.getElementById('game-id').addEventListener('change', loadGameDetails);
     
-    // Firebase Auth durumunu dinle
-    firebase.auth().onAuthStateChanged(async (user) => {
-        if (user) {
-            firebaseUser = user;
-            console.log("Firebase kullanıcısı:", user.uid);
-            
-            // Kullanıcı profilini yükle
-            const profile = await getUserProfile();
-            if (profile) {
-                userAddress = profile.address;
-                
-                // Ethereum provider'ı başlat
-                await initEthereumProvider();
-                
-                // Oyunları yükle
-                await loadFirebaseGames();
-            }
-        } else {
-            firebaseUser = null;
-            console.log("Firebase kullanıcısı çıkış yaptı");
-        }
-    });
-    
     // Ethereum sağlayıcısını kontrol et
     if (window.ethereum) {
         try {
             // Modern provider (EIP-1193)
             provider = new ethers.providers.Web3Provider(window.ethereum);
+            
+            // Kontrat ABI'sini yükle
             contract = new ethers.Contract(contractAddress, contractABI, provider);
             
             // Cüzdan bağlı mı kontrol et
             const accounts = await window.ethereum.request({ method: 'eth_accounts' });
             if (accounts.length > 0) {
-                await connectWallet();
+                // Kullanıcı zaten bağlı, signer'ı ayarla
+                signer = provider.getSigner();
+                userAddress = accounts[0];
+                
+                // Kontratı signer ile bağla
+                contract = new ethers.Contract(contractAddress, contractABI, signer);
+                
+                // Bağlı cüzdan bilgisini göster
+                const walletInfo = document.getElementById('wallet-info');
+                walletInfo.textContent = shortenAddress(userAddress);
+                walletInfo.style.display = 'block';
+                
+                // Firebase ile giriş yap
+                await signInWithMetaMask();
             }
             
             // Platform istatistiklerini yükle
@@ -158,11 +150,10 @@ async function connectWallet() {
                 throw new Error("Kullanıcı cüzdan erişimine izin vermedi");
             }
             
+            // Provider'ı yeniden başlat
+            provider = new ethers.providers.Web3Provider(window.ethereum);
             signer = provider.getSigner();
             userAddress = await signer.getAddress();
-            
-            // Firebase ile kimlik doğrulama
-            await signInWithMetaMask(userAddress);
             
             // Bağlı cüzdan bilgisini göster
             const walletInfo = document.getElementById('wallet-info');
@@ -172,8 +163,11 @@ async function connectWallet() {
             // Kontratı signer ile bağla
             contract = new ethers.Contract(contractAddress, contractABI, signer);
             
+            // Firebase ile giriş yap
+            await signInWithMetaMask();
+            
             // Oyunları yükle
-            loadFirebaseGames();
+            await loadFirebaseGames();
             
             // Kullanıcı bilgilerini yükle
             loadUserInfo();
@@ -193,33 +187,53 @@ async function connectWallet() {
 }
 
 // MetaMask ile Firebase'e giriş yap
-async function signInWithMetaMask(address) {
+async function signInWithMetaMask() {
     try {
+        if (!userAddress) {
+            throw new Error("Ethereum adresi bulunamadı");
+        }
+        
         // Nonce oluştur
         const nonce = Math.floor(Math.random() * 1000000).toString();
         
-        // Kullanıcıya imzalatılacak mesaj
+        // İmzalanacak mesaj
         const message = `Taş Kağıt Makas oyununa giriş yapmak için bu mesajı imzalayın. Nonce: ${nonce}`;
         
         // Mesajı imzalat
         const signature = await window.ethereum.request({
             method: 'personal_sign',
-            params: [message, address]
+            params: [message, userAddress]
         });
         
-        // Backend'e gönder ve özel token al
+        // Firebase'e gönder
         const response = await fetch('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address, signature, message, nonce })
+            body: JSON.stringify({ 
+                address: userAddress, 
+                signature, 
+                message, 
+                nonce 
+            })
         });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Kimlik doğrulama hatası");
+        }
         
         const data = await response.json();
         
         // Firebase ile giriş yap
         await firebase.auth().signInWithCustomToken(data.token);
         
-        console.log("Firebase'e giriş yapıldı!");
+        // Kullanıcı bilgilerini al
+        firebaseUser = firebase.auth().currentUser;
+        console.log("Firebase'e giriş yapıldı:", firebaseUser.uid);
+        
+        // Oyunları yükle
+        await loadFirebaseGames();
+        
         return true;
     } catch (error) {
         console.error("Firebase giriş hatası:", error);
